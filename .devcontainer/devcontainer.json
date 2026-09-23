@@ -1,0 +1,12 @@
+{
+  "name": "Vestigium - Java 25",
+  "image": "mcr.microsoft.com/devcontainers/java:3-25-trixie",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "editorconfig.editorconfig"
+      ]
+    }
+  }
+}
