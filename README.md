@@ -25,6 +25,8 @@ Positive values such as `1`, `0.75` and `1.234567` are accepted. Zero and negati
 
 This type represents the magnitude of a movement, not an item's balance. It does not define whether balances can be zero or negative.
 
+Lombok generates the private constructor at compile time. Validation and numeric equality remain explicit, and the `value()` accessor is unchanged. Maven configures Lombok as a `provided` dependency and an explicit annotation processor; it is not required at runtime.
+
 ## Requirements
 
 | Tool | Version |

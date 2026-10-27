@@ -2,14 +2,12 @@ package io.github.josepauloferreira.vestigium.domain;
 
 import java.math.BigDecimal;
 import java.util.Objects;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 
-/** A strictly positive physical movement magnitude, preserving its decimal representation. */
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class MovementQuantity {
   private final BigDecimal value;
-
-  private MovementQuantity(BigDecimal value) {
-    this.value = value;
-  }
 
   public static MovementQuantity of(BigDecimal value) {
     Objects.requireNonNull(value, "Movement quantity is required");
@@ -31,7 +29,6 @@ public final class MovementQuantity {
 
   @Override
   public int hashCode() {
-    // Normalize at scale zero to avoid overflowing an extreme input scale.
     BigDecimal coefficient = new BigDecimal(value.unscaledValue()).stripTrailingZeros();
     long normalizedScale = (long) value.scale() + coefficient.scale();
     return 31 * coefficient.unscaledValue().hashCode() + Long.hashCode(normalizedScale);
