@@ -1,9 +1,8 @@
 package io.github.josepauloferreira.vestigium.domain;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -22,24 +21,24 @@ class MovementQuantityTest {
 
     MovementQuantity quantity = MovementQuantity.of(value);
 
-    assertEquals(value, quantity.value());
+    assertThat(quantity.value())
+        .isEqualByComparingTo(value)
+        .hasScaleOf(value.scale());
   }
 
   @ParameterizedTest
   @ValueSource(strings = {"0", "0.00", "-1", "-0.75", "-0.0001"})
   void rejectsNonpositiveMagnitudes(String input) {
-    IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-        () -> MovementQuantity.of(new BigDecimal(input)));
-
-    assertEquals("Movement quantity must be greater than zero", exception.getMessage());
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> MovementQuantity.of(new BigDecimal(input)))
+        .withMessage("Movement quantity must be greater than zero");
   }
 
   @Test
   void rejectsMissingMagnitude() {
-    NullPointerException exception = assertThrows(NullPointerException.class,
-        () -> MovementQuantity.of(null));
-
-    assertEquals("Movement quantity is required", exception.getMessage());
+    assertThatNullPointerException()
+        .isThrownBy(() -> MovementQuantity.of(null))
+        .withMessage("Movement quantity is required");
   }
 
   @ParameterizedTest
@@ -48,10 +47,10 @@ class MovementQuantityTest {
     MovementQuantity left = MovementQuantity.of(new BigDecimal(first));
     MovementQuantity right = MovementQuantity.of(new BigDecimal(second));
 
-    assertEquals(left, right);
-    assertEquals(right, left);
-    assertEquals(left.hashCode(), right.hashCode());
-    assertTrue(Set.of(left).contains(right));
+    assertThat(left).isEqualTo(right);
+    assertThat(right).isEqualTo(left);
+    assertThat(left.hashCode()).isEqualTo(right.hashCode());
+    assertThat(Set.of(left).contains(right)).isTrue();
   }
 
   @Test
@@ -60,9 +59,9 @@ class MovementQuantityTest {
     MovementQuantity second = MovementQuantity.of(
         new BigDecimal(BigInteger.valueOf(100), Integer.MIN_VALUE + 1));
 
-    assertEquals(first, second);
-    assertEquals(first.hashCode(), second.hashCode());
-    assertTrue(Set.of(first).contains(second));
+    assertThat(first).isEqualTo(second);
+    assertThat(first.hashCode()).isEqualTo(second.hashCode());
+    assertThat(Set.of(first).contains(second)).isTrue();
   }
 
   @Test
@@ -70,15 +69,16 @@ class MovementQuantityTest {
     MovementQuantity first = MovementQuantity.of(new BigDecimal("1.5"));
     MovementQuantity second = MovementQuantity.of(new BigDecimal("1.6"));
 
-    assertNotEquals(first, second);
+    assertThat(first).isNotEqualTo(second);
   }
 
   @Test
   void equalsItselfButNotNullOrOtherTypes() {
     MovementQuantity quantity = MovementQuantity.of(new BigDecimal("1.5"));
 
-    assertEquals(quantity, quantity);
-    assertNotEquals(quantity, null);
-    assertNotEquals(quantity, new BigDecimal("1.5"));
+    assertThat(quantity)
+        .isEqualTo(quantity)
+        .isNotEqualTo(null)
+        .isNotEqualTo(new BigDecimal("1.5"));
   }
 }

@@ -65,7 +65,7 @@ On Windows PowerShell:
 .\mvnw.cmd verify
 ```
 
-A successful build finishes with `BUILD SUCCESS` and a test summary with no failures, errors or skipped tests. JUnit Jupiter provides the behavioral tests; Maven Surefire runs them and rejects an empty test suite. These tests validate movement quantities, not a complete inventory workflow.
+A successful build finishes with `BUILD SUCCESS` and a test summary with no failures, errors or skipped tests. JUnit Jupiter provides the test framework, AssertJ supplies fluent assertions, and Maven Surefire runs the tests and rejects an empty suite. JUnit and AssertJ are test-scoped dependencies. These tests validate movement quantities, not a complete inventory workflow.
 
 To run only the tests:
 
