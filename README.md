@@ -8,9 +8,22 @@ The project originates from a warehouse process where quantities are updated dir
 
 ## Current stage
 
-Vestigium is at the project-bootstrap stage. The repository currently provides a Maven build and Maven Wrapper. Application code, inventory rules, business tests, an HTTP API and persistence have not been implemented.
+This branch introduces the first domain rule: a movement quantity must be present and strictly positive, and may be fractional. `MovementQuantity` stores a `BigDecimal` without rounding or changing its scale. Quantities such as `1.5` and `1.50` have equal numeric meaning and consistent hashes while retaining their original representation.
 
-The generated JAR is currently empty and is not a runnable application.
+The rule has unit tests. Item registration, complete stock movements, balance calculation, an HTTP API and persistence have not been implemented. The JAR contains the domain class and is not a runnable application.
+
+## Movement quantity
+
+```java
+import io.github.josepauloferreira.vestigium.domain.MovementQuantity;
+import java.math.BigDecimal;
+
+MovementQuantity quantity = MovementQuantity.of(new BigDecimal("0.75"));
+```
+
+Positive values such as `1`, `0.75` and `1.234567` are accepted. Zero and negative values throw `IllegalArgumentException`; absent values throw `NullPointerException`. No fixed decimal scale or business rounding policy is defined.
+
+This type represents the magnitude of a movement, not an item's balance. It does not define whether balances can be zero or negative.
 
 ## Requirements
 
@@ -50,7 +63,15 @@ On Windows PowerShell:
 .\mvnw.cmd verify
 ```
 
-A successful build finishes with `BUILD SUCCESS`. At this stage, `No sources to compile`, `No tests to run` and the empty-JAR warning are expected. Success validates the build setup, not inventory behavior.
+A successful build finishes with `BUILD SUCCESS` and a test summary with no failures, errors or skipped tests. JUnit Jupiter provides the behavioral tests; Maven Surefire runs them and rejects an empty test suite. These tests validate movement quantities, not a complete inventory workflow.
+
+To run only the tests:
+
+```bash
+./mvnw test
+```
+
+Coverage includes positive integers/fractions, preservation of scale and precision, rejection of zero/negative/missing values, and numeric equality across scales with consistent hash-based lookup. Test reports are written to `target/surefire-reports/`.
 
 ## JDK validation
 
