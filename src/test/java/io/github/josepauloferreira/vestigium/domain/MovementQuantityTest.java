@@ -24,6 +24,7 @@ class MovementQuantityTest {
     assertThat(quantity.value())
         .isEqualByComparingTo(value)
         .hasScaleOf(value.scale());
+    assertThat(new MovementQuantity(quantity.value())).isEqualTo(quantity);
   }
 
   @ParameterizedTest
@@ -38,6 +39,21 @@ class MovementQuantityTest {
   void rejectsMissingMagnitude() {
     assertThatNullPointerException()
         .isThrownBy(() -> MovementQuantity.of(null))
+        .withMessage("Movement quantity is required");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"0", "0.00", "-1", "-0.75", "-0.0001"})
+  void rejectsNonpositiveMagnitudesThroughTheConstructor(String input) {
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> new MovementQuantity(new BigDecimal(input)))
+        .withMessage("Movement quantity must be greater than zero");
+  }
+
+  @Test
+  void rejectsMissingMagnitudeThroughTheConstructor() {
+    assertThatNullPointerException()
+        .isThrownBy(() -> new MovementQuantity(null))
         .withMessage("Movement quantity is required");
   }
 
