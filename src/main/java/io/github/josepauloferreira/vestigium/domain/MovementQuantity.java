@@ -18,7 +18,8 @@ public record MovementQuantity(BigDecimal value) {
   @Override
   public boolean equals(Object other) {
     return this == other
-        || other instanceof MovementQuantity quantity && value.compareTo(quantity.value) == 0;
+        || other instanceof MovementQuantity(BigDecimal otherValue)
+            && value.compareTo(otherValue) == 0;
   }
 
   @Override

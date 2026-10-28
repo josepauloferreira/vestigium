@@ -8,9 +8,29 @@ The project originates from a warehouse process where quantities are updated dir
 
 ## Current stage
 
-This branch introduces the first domain rule: a movement quantity must be present and strictly positive, and may be fractional. `MovementQuantity` stores a `BigDecimal` without rounding or changing its scale. Quantities such as `1.5` and `1.50` have equal numeric meaning and consistent hashes while retaining their original representation.
+The domain represents items with stable identity and a physical unit, and validates positive fractional movement quantities. `MovementQuantity` stores a `BigDecimal` without rounding or changing its scale. Quantities such as `1.5` and `1.50` have equal numeric meaning and consistent hashes while retaining their original representation.
 
-The rule has unit tests. Item registration, complete stock movements, balance calculation, an HTTP API and persistence have not been implemented. The JAR contains the domain class and is not a runnable application.
+These rules have unit tests. Catalog registration, complete stock movements, balance calculation, an HTTP API and persistence have not been implemented. The JAR contains domain types and is not a runnable application.
+
+## Items and physical units
+
+```java
+import io.github.josepauloferreira.vestigium.domain.Item;
+import io.github.josepauloferreira.vestigium.domain.ItemId;
+import io.github.josepauloferreira.vestigium.domain.PhysicalUnit;
+import java.util.UUID;
+
+ItemId id = new ItemId(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+Item item = new Item(id, "Synthetic oil", PhysicalUnit.LITRE);
+```
+
+`ItemId` is a Value Object record wrapping a required UUID; callers supply the identifier. `Item` is an entity: equality and hashes depend only on its stable identifier. A matching name and unit do not make two different identifiers the same item. Identity equality does not authorize changing an item's unit or converting quantities.
+
+An item requires an identifier, a nonblank name and a physical unit. Missing values throw `NullPointerException`; blank names throw `IllegalArgumentException`. Names retain their supplied whitespace and case. There are no setters, catalog uniqueness rules or rename/unit-change operations.
+
+The initial units are `PAIR`, `UNIT`, `LITRE`, `ROLL` and `KG`. Extend the enum when another physical stock unit is needed. Supplier packaging, unit conversions and whole-number restrictions are not modeled. Independently stocked variants, such as different boot sizes, use separate identifiers.
+
+Lombok generates `Item`'s read-only `id()`, `name()` and `unit()` accessors. Its constructor validation and identity-based equality/hash remain explicit.
 
 ## Movement quantity
 
@@ -67,7 +87,7 @@ On Windows PowerShell:
 .\mvnw.cmd verify
 ```
 
-A successful build finishes with `BUILD SUCCESS` and a test summary with no failures, errors or skipped tests. JUnit Jupiter provides the test framework, AssertJ supplies fluent assertions, and Maven Surefire runs the tests and rejects an empty suite. JUnit and AssertJ are test-scoped dependencies. These tests validate movement quantities, not a complete inventory workflow.
+A successful build finishes with `BUILD SUCCESS` and a test summary with no failures, errors or skipped tests. JUnit Jupiter provides the test framework, AssertJ supplies fluent assertions, and Maven Surefire runs the tests and rejects an empty suite. JUnit and AssertJ are test-scoped dependencies. These tests validate item identity, required attributes and movement quantities, not a complete inventory workflow. The `verify` phase also checks Java formatting with Spotless.
 
 To run only the tests:
 
@@ -75,7 +95,25 @@ To run only the tests:
 ./mvnw test
 ```
 
-Coverage includes positive integers/fractions, preservation of scale and precision, rejection of zero/negative/missing values, and numeric equality across scales with consistent hash-based lookup. Test reports are written to `target/surefire-reports/`.
+Coverage includes item identity versus descriptive attributes, required values, blank names, physical units, positive integers/fractions, preservation of scale and precision, rejection of zero/negative/missing quantities, and equality with consistent hash-based lookup. Test reports are written to `target/surefire-reports/`.
+
+## Java formatting
+
+Spotless Maven Plugin 3.10.4 runs google-java-format 1.36.1 in Google style over production and test Java sources. Both versions are pinned in `pom.xml`. It checks Java files only; it does not format the POM, Markdown or generated Maven Wrapper scripts.
+
+Apply formatting before committing:
+
+```bash
+./mvnw spotless:apply
+```
+
+Check formatting without changing files:
+
+```bash
+./mvnw spotless:check
+```
+
+`./mvnw verify` includes this check and fails if formatting differs. It never applies formatting automatically. `./mvnw test` runs tests without the formatting check. An IDE formatter is optional; the Maven configuration is the reproducible project standard. See the [Spotless Maven documentation](https://github.com/diffplug/spotless/blob/main/plugin-maven/README.md) and [google-java-format](https://github.com/google/google-java-format).
 
 ## JDK validation
 
