@@ -14,16 +14,22 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class MovementQuantityTest {
   @ParameterizedTest
-  @ValueSource(strings = {"1", "1.5", "0.75", "0.0001", "1.234567", "1.500",
-      "1000000000000000000000000.000001"})
+  @ValueSource(
+      strings = {
+        "1",
+        "1.5",
+        "0.75",
+        "0.0001",
+        "1.234567",
+        "1.500",
+        "1000000000000000000000000.000001"
+      })
   void preservesPositiveMagnitudeAndOriginalScale(String input) {
     BigDecimal value = new BigDecimal(input);
 
     MovementQuantity quantity = MovementQuantity.of(value);
 
-    assertThat(quantity.value())
-        .isEqualByComparingTo(value)
-        .hasScaleOf(value.scale());
+    assertThat(quantity.value()).isEqualByComparingTo(value).hasScaleOf(value.scale());
     assertThat(new MovementQuantity(quantity.value())).isEqualTo(quantity);
   }
 
@@ -72,8 +78,8 @@ class MovementQuantityTest {
   @Test
   void supportsEqualValuesAtTheMinimumBigDecimalScale() {
     MovementQuantity first = MovementQuantity.of(new BigDecimal(BigInteger.TEN, Integer.MIN_VALUE));
-    MovementQuantity second = MovementQuantity.of(
-        new BigDecimal(BigInteger.valueOf(100), Integer.MIN_VALUE + 1));
+    MovementQuantity second =
+        MovementQuantity.of(new BigDecimal(BigInteger.valueOf(100), Integer.MIN_VALUE + 1));
 
     assertThat(first).isEqualTo(second);
     assertThat(first.hashCode()).isEqualTo(second.hashCode());
@@ -92,9 +98,6 @@ class MovementQuantityTest {
   void equalsItselfButNotNullOrOtherTypes() {
     MovementQuantity quantity = MovementQuantity.of(new BigDecimal("1.5"));
 
-    assertThat(quantity)
-        .isEqualTo(quantity)
-        .isNotEqualTo(null)
-        .isNotEqualTo(new BigDecimal("1.5"));
+    assertThat(quantity).isEqualTo(quantity).isNotEqualTo(null).isNotEqualTo(new BigDecimal("1.5"));
   }
 }
