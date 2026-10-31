@@ -8,6 +8,10 @@ spring:
   sql:
     init:
       mode: never
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
 
 server:
   address: 127.0.0.1

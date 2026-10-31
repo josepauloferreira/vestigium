@@ -10,7 +10,7 @@ The project originates from a warehouse process where quantities are updated dir
 
 The domain represents items with stable identity and a physical unit, positive fractional movement quantities, stock entries with an explicit occurrence time and one line per item, and per-item balances derived from supplied entries. `MovementQuantity` stores a `BigDecimal` without rounding or changing its scale. Quantities such as `1.5` and `1.50` have equal numeric meaning and consistent hashes while retaining their original representation.
 
-These rules have unit tests. A Spring Boot application exposes a basic HTTP health endpoint and runs as an executable JAR. The item catalog can be inserted and retrieved through a Java repository backed by PostgreSQL, with Flyway migrations and real-database integration tests. Stock entries can be constructed in Java and summed per item; business HTTP endpoints, entry persistence and other movement types have not been implemented. Entry-derived totals are not yet complete operational stock balances.
+These rules have unit tests. A Spring Boot application exposes a basic HTTP health endpoint and runs as an executable JAR. The item catalog uses Spring Data JPA and Hibernate with PostgreSQL, Flyway migrations and real-database integration tests. Stock entries can be constructed in Java and summed per item; business HTTP endpoints, entry persistence and other movement types have not been implemented. Entry-derived totals are not yet complete operational stock balances.
 
 ## Items and physical units
 
@@ -34,13 +34,17 @@ Lombok generates `Item`'s read-only `id()`, `name()` and `unit()` accessors. Its
 
 ## Persistent item catalog
 
-`ItemRepository` exposes only `insert(Item)` and `findById(ItemId)`. Its Spring-managed `JdbcItemRepository` implementation uses parameterized SQL through `JdbcClient`. Callers supply the UUID; persistence does not replace it or normalize the name.
+`ItemRepository` exposes only `insert(Item)` and `findById(ItemId)`. Its Spring-managed `JpaItemRepository` implementation delegates to a small Spring Data JPA repository backed by Hibernate. A separate `ItemEntity` maps the table; the immutable domain `Item` keeps its existing validation and has no JPA annotations. Callers supply the UUID; persistence does not replace it or normalize the name.
 
 `insert` creates a row. Reusing an existing ID throws `DuplicateItemIdException` and leaves the original name and unit unchanged. There is no update/upsert behavior. Different IDs may share a name. `findById` returns `Optional.empty()` for an unknown ID, otherwise reconstructing a validated domain item with its stored attributes.
 
+Because UUIDs are assigned before storage, `ItemEntity` implements Spring Data's `Persistable` contract to identify new instances explicitly. Persistence/load callbacks mark them as existing afterward. This makes a new insertion use JPA `persist` instead of selecting `merge` just because its ID is populated. `saveAndFlush` executes the insert within the repository transaction so an identity conflict is reported to the caller. The adapter distinguishes identity conflicts from other integrity failures.
+
+PostgreSQL text cannot store the NUL character. Such input fails as a data-integrity error; it is not silently changed or reported as a duplicate identity.
+
 The first Flyway migration, `V1__create_items.sql`, creates `items` with a UUID primary key, a required text name and a required physical-unit name checked against the current five values. Java validates item construction, including blank names; the migration does not attempt to reproduce Java's Unicode blank-string rules. Adding a new physical unit will also require a migration of the database constraint. There is no name-uniqueness constraint or arbitrary name-length rule.
 
-Flyway applies versioned migrations on application startup. It is the only schema initialization mechanism; basic `schema.sql`/`data.sql` initialization is disabled. Keep applied migrations unchanged and introduce a new version for later schema changes.
+Flyway applies versioned migrations on application startup. It is the only schema creation/change mechanism; basic `schema.sql`/`data.sql` initialization is disabled and Hibernate uses `ddl-auto: validate`. Hibernate checks the mapping against the migrated schema without generating tables. Open EntityManager in View is disabled; repository operations use their transaction boundaries. Keep applied migrations unchanged and introduce a new version for later schema changes.
 
 The repository is exercised by integration tests; no item registration/query HTTP routes exist yet. Item equality compares only identity, so persistence tests explicitly compare ID, name and unit to verify the mapping.
 
@@ -236,7 +240,7 @@ On Windows PowerShell:
 
 A successful build finishes with `BUILD SUCCESS` and a test summary with no failures, errors or skipped tests. JUnit Jupiter provides the test framework, AssertJ supplies fluent assertions, and Maven Surefire runs the tests and rejects an empty suite. The test starter supplies these libraries in test scope; the parent manages AssertJ 3.27.7, and `junit-jupiter.version` retains the aligned JUnit 6.1.3 family. Existing compiler, Surefire, Enforcer and formatter configuration remains explicit. The `verify` phase also creates the executable JAR and checks Java formatting with Spotless.
 
-Domain tests validate item identity, required attributes, movement quantities, stock entry rules and per-item totals from entries. `JdbcItemRepositoryTest` uses real PostgreSQL and the actual Flyway migration to verify round trips, all physical units, preserved names, missing identities, duplicate-ID rejection, shared names and committed data across closed/reopened application contexts. These tests do not rely on rollback-only transactions or an in-memory database.
+Domain tests validate item identity, required attributes, movement quantities, stock entry rules and per-item totals from entries. `JpaItemRepositoryTest` uses real Hibernate/PostgreSQL and the actual Flyway migration to verify round trips, all physical units, preserved names, missing identities, duplicate-ID rejection (including identical content and an identity already loaded in a transaction), shared names and committed data across closed/reopened application contexts. These tests do not rely on rollback-only transactions or an in-memory database.
 
 `ApplicationHttpTest` starts a real embedded server on an available port with a Testcontainers database, checks the health response and verifies that `/actuator/env` and `/actuator/info` are not exposed. HTTP clients, application contexts and test databases are closed after use. Full verification requires a working Docker environment; database tests are not silently skipped when it is missing. These checks do not establish a complete inventory workflow.
 

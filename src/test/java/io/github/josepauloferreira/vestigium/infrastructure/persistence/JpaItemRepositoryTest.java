@@ -24,17 +24,21 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @SpringBootTest(webEnvironment = WebEnvironment.NONE)
 @Import(PostgresTestConfiguration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-class JdbcItemRepositoryTest {
+class JpaItemRepositoryTest {
 
   @Autowired private ItemRepository repository;
   @Autowired private Flyway flyway;
   @Autowired private PostgreSQLContainer postgres;
+  @Autowired private PlatformTransactionManager transactionManager;
 
   @ParameterizedTest
   @EnumSource(PhysicalUnit.class)
@@ -76,6 +80,44 @@ class JdbcItemRepositoryTest {
     assertThatThrownBy(() -> repository.insert(replacement))
         .isInstanceOf(DuplicateItemIdException.class);
     assertAttributes(repository.findById(original.id()).orElseThrow(), original);
+  }
+
+  @Test
+  void rejectsRepeatedIdentityEvenWithIdenticalAttributes() {
+    Item original = item("Synthetic material", PhysicalUnit.KG);
+    repository.insert(original);
+
+    assertThatThrownBy(() -> repository.insert(original))
+        .isInstanceOf(DuplicateItemIdException.class);
+    assertAttributes(repository.findById(original.id()).orElseThrow(), original);
+  }
+
+  @Test
+  void rejectsIdentityAlreadyLoadedInTheCurrentTransaction() {
+    Item original = item("Original material", PhysicalUnit.KG);
+    Item replacement = new Item(original.id(), "Different material", PhysicalUnit.ROLL);
+    repository.insert(original);
+
+    assertThatThrownBy(
+            () ->
+                new TransactionTemplate(transactionManager)
+                    .executeWithoutResult(
+                        status -> {
+                          assertAttributes(
+                              repository.findById(original.id()).orElseThrow(), original);
+                          repository.insert(replacement);
+                        }))
+        .isInstanceOf(DuplicateItemIdException.class);
+    assertAttributes(repository.findById(original.id()).orElseThrow(), original);
+  }
+
+  @Test
+  void preservesOtherDataFailuresInsteadOfReportingAnIdentityConflict() {
+    Item item = item("Synthetic" + Character.MIN_VALUE + "material", PhysicalUnit.KG);
+
+    assertThatThrownBy(() -> repository.insert(item))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThat(repository.findById(item.id())).isEmpty();
   }
 
   @Test
