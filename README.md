@@ -164,6 +164,26 @@ To run only the tests:
 
 Coverage includes exact per-item entry totals, empty histories, duplicate-entry rejection, preserved inputs, stateless repeated calls, stock entry construction, duplicate-item rejection, occurrence precision, collection immutability, item identity versus descriptive attributes, required values, blank names, physical units, positive integers/fractions, preservation of scale and precision, rejection of zero/negative/missing quantities, and equality with consistent hash-based lookup. Test reports are written to `target/surefire-reports/`.
 
+## Continuous integration
+
+The [CI workflow](.github/workflows/verify.yml) defines one `Verify` job on a GitHub-hosted Ubuntu 24.04 runner. It runs when a pull request targeting `main` is opened, reopened or updated, and when commits are pushed to `main`, including merges.
+
+The workflow checks out the candidate, selects Temurin using the tracked `.java-version`, caches Maven dependencies, prints the Java/Maven versions and runs:
+
+```bash
+./mvnw -B --no-transfer-progress verify
+```
+
+The Wrapper selects Maven 3.9.16. This is the same `verify` gate used locally: compilation, tests, JAR packaging and Spotless checks. Batch mode and suppressed transfer progress keep CI non-interactive and its logs readable. The workflow checks formatting without rewriting source files.
+
+For pull requests, the default checkout tests GitHub's temporary merge candidate with the base branch. A push to `main` checks the resulting main commit. Inspect the relevant commit and run together when reviewing results.
+
+Open the PR's **Checks** section or the repository's [Actions tab](https://github.com/josepauloferreira/vestigium/actions), select **CI**, then **Verify** to inspect the setup, tool versions and Maven output. A failed test, compilation or formatting check fails the job. A local successful build or a workflow file alone does not establish that a GitHub run passed.
+
+Official actions are pinned to verified release commits, with version comments beside their references. The workflow uses read-only repository contents permission, does not persist checkout credentials and requires no custom secrets. The dependency cache is an optimization; a cold cache still downloads the dependencies needed by the build.
+
+Adding this workflow does not configure required checks or branch protection. Those repository settings are separate from displaying a CI result. This first workflow covers Linux/JDK 25; it does not establish Windows or macOS execution evidence, deployment or package publication.
+
 ## Java formatting
 
 Spotless Maven Plugin 3.10.4 runs google-java-format 1.36.1 in Google style over production and test Java sources. Both versions are pinned in `pom.xml`. It checks Java files only; it does not format the POM, Markdown or generated Maven Wrapper scripts.
