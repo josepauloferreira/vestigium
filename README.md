@@ -10,7 +10,7 @@ The project originates from a warehouse process where quantities are updated dir
 
 The domain represents items with stable identity and a physical unit, positive fractional movement quantities, stock entries with an explicit occurrence time and one line per item, and per-item balances derived from supplied entries. `MovementQuantity` stores a `BigDecimal` without rounding or changing its scale. Quantities such as `1.5` and `1.50` have equal numeric meaning and consistent hashes while retaining their original representation.
 
-These rules have unit tests. Stock entries can be constructed in Java and summed per item; catalog registration, other movement types, an HTTP API and persistence have not been implemented. The JAR contains domain types and is not a runnable application. Entry-derived totals are not yet complete operational stock balances.
+These rules have unit tests. A Spring Boot application now exposes a basic HTTP health endpoint and can run as an executable JAR. Stock entries can be constructed in Java and summed per item; catalog registration, business HTTP endpoints, other movement types and persistence have not been implemented. Entry-derived totals are not yet complete operational stock balances.
 
 ## Items and physical units
 
@@ -122,6 +122,7 @@ The first matching quantity is used directly before adding subsequent quantities
 | --- | --- |
 | JDK | 25 |
 | Maven | 3.9.16, provided by the Maven Wrapper |
+| Spring Boot | 4.1.2, managed by the Maven parent |
 
 A global Maven installation is unnecessary. The first build may require network access to download the Maven distribution and build dependencies.
 
@@ -136,6 +137,45 @@ java --version
 ```
 
 These settings apply to the current shell session. If you use an IDE, also select JDK 25 for the project and Maven runner; its terminal may use a different JDK.
+
+## Run the application
+
+From the repository root with JDK 25 selected:
+
+```bash
+./mvnw spring-boot:run
+```
+
+The application listens on `127.0.0.1:8080` by default. From another terminal:
+
+```bash
+curl --fail --include --header 'Accept: application/json' http://127.0.0.1:8080/actuator/health
+```
+
+Expect HTTP `200` and the JSON body:
+
+```json
+{"status":"UP"}
+```
+
+Spring Boot Actuator supplies this endpoint; there is no custom health controller. Only `health` is exposed over HTTP, without component details. Separate liveness/readiness probe groups are disabled for this first local application. `UP` describes the configured application health checks; no database is connected in this increment, and this response does not establish inventory correctness or durable storage.
+
+Stop the process with **Ctrl+C**. To use another port on Linux or macOS:
+
+```bash
+SERVER_PORT=8081 ./mvnw spring-boot:run
+```
+
+Then use port `8081` in the request. The loopback address is the default for this local demonstration; Spring Boot's standard external configuration can override the address and port. Public deployment and authentication are separate future work.
+
+To build and run the executable JAR:
+
+```bash
+./mvnw verify
+java -jar target/vestigium-0.0.1-SNAPSHOT.jar
+```
+
+Use the same health request and **Ctrl+C** to stop. An alternate JAR port can be supplied with `--server.port=8081`. The Spring Boot Maven plugin packages the embedded server and runtime dependencies; Lombok is explicitly excluded. The `.jar.original` file is the intermediate archive, not the executable application.
 
 ## Verify the project
 
@@ -154,7 +194,9 @@ On Windows PowerShell:
 .\mvnw.cmd verify
 ```
 
-A successful build finishes with `BUILD SUCCESS` and a test summary with no failures, errors or skipped tests. JUnit Jupiter provides the test framework, AssertJ supplies fluent assertions, and Maven Surefire runs the tests and rejects an empty suite. JUnit and AssertJ are test-scoped dependencies. These tests validate item identity, required attributes, movement quantities, stock entry rules and per-item totals from entries, not a complete inventory workflow. The `verify` phase also checks Java formatting with Spotless.
+A successful build finishes with `BUILD SUCCESS` and a test summary with no failures, errors or skipped tests. JUnit Jupiter provides the test framework, AssertJ supplies fluent assertions, and Maven Surefire runs the tests and rejects an empty suite. The test starter supplies these libraries in test scope; the parent manages AssertJ 3.27.7, and `junit-jupiter.version` retains the aligned JUnit 6.1.3 family. Existing compiler, Surefire, Enforcer and formatter configuration remains explicit. The `verify` phase also creates the executable JAR and checks Java formatting with Spotless.
+
+Domain tests validate item identity, required attributes, movement quantities, stock entry rules and per-item totals from entries. `ApplicationHttpTest` starts a real embedded server on an available port, checks the health response and verifies that `/actuator/env` and `/actuator/info` are not exposed. It closes the HTTP clients and application context after use. The test does not require port 8080 or a database; these checks do not establish a complete inventory workflow.
 
 To run only the tests:
 
