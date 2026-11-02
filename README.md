@@ -10,7 +10,7 @@ The project originates from a warehouse process where quantities are updated dir
 
 The domain represents items with stable identity and a physical unit, positive fractional movement quantities, stock entries with an explicit occurrence time and one line per item, and per-item balances derived from supplied entries. `MovementQuantity` stores a `BigDecimal` without rounding or changing its scale. Quantities such as `1.5` and `1.50` have equal numeric meaning and consistent hashes while retaining their original representation.
 
-These rules have unit tests. A Spring Boot application now exposes a basic HTTP health endpoint and can run as an executable JAR. Stock entries can be constructed in Java and summed per item; catalog registration, business HTTP endpoints, other movement types and persistence have not been implemented. Entry-derived totals are not yet complete operational stock balances.
+These rules have unit tests. A Spring Boot application exposes a basic HTTP health endpoint and runs as an executable JAR. The item catalog uses Spring Data JPA and Hibernate with PostgreSQL, Flyway migrations and real-database integration tests. Stock entries can be constructed in Java and summed per item; business HTTP endpoints, entry persistence and other movement types have not been implemented. Entry-derived totals are not yet complete operational stock balances.
 
 ## Items and physical units
 
@@ -26,11 +26,29 @@ Item item = new Item(id, "Synthetic oil", PhysicalUnit.LITRE);
 
 `ItemId` is a Value Object record wrapping a required UUID; callers supply the identifier. `Item` is an entity: equality and hashes depend only on its stable identifier. A matching name and unit do not make two different identifiers the same item. Identity equality does not authorize changing an item's unit or converting quantities.
 
-An item requires an identifier, a nonblank name and a physical unit. Missing values throw `NullPointerException`; blank names throw `IllegalArgumentException`. Names retain their supplied whitespace and case. There are no setters, catalog uniqueness rules or rename/unit-change operations.
+An item requires an identifier, a nonblank name and a physical unit. Missing values throw `NullPointerException`; blank names throw `IllegalArgumentException`. Names retain their supplied whitespace and case. There are no setters, name-uniqueness rules or rename/unit-change operations.
 
 The initial units are `PAIR`, `UNIT`, `LITRE`, `ROLL` and `KG`. Extend the enum when another physical stock unit is needed. Supplier packaging, unit conversions and whole-number restrictions are not modeled. Independently stocked variants, such as different boot sizes, use separate identifiers.
 
 Lombok generates `Item`'s read-only `id()`, `name()` and `unit()` accessors. Its constructor validation and identity-based equality/hash remain explicit.
+
+## Persistent item catalog
+
+`ItemRepository` exposes only `insert(Item)` and `findById(ItemId)`. Its Spring-managed `JpaItemRepository` implementation delegates to a small Spring Data JPA repository backed by Hibernate. A separate `ItemEntity` maps the table; the immutable domain `Item` keeps its existing validation and has no JPA annotations. Callers supply the UUID; persistence does not replace it or normalize the name.
+
+`insert` creates a row. Reusing an existing ID throws `DuplicateItemIdException` and leaves the original name and unit unchanged. There is no update/upsert behavior. Different IDs may share a name. `findById` returns `Optional.empty()` for an unknown ID, otherwise reconstructing a validated domain item with its stored attributes.
+
+Because UUIDs are assigned before storage, `ItemEntity` implements Spring Data's `Persistable` contract to identify new instances explicitly. Persistence/load callbacks mark them as existing afterward. This makes a new insertion use JPA `persist` instead of selecting `merge` just because its ID is populated. `saveAndFlush` executes the insert within the repository transaction so an identity conflict is reported to the caller. The adapter distinguishes identity conflicts from other integrity failures.
+
+PostgreSQL text cannot store the NUL character. Such input fails as a data-integrity error; it is not silently changed or reported as a duplicate identity.
+
+The first Flyway migration, `V1__create_items.sql`, creates `items` with a UUID primary key, a required text name and a required physical-unit name checked against the current five values. Java validates item construction, including blank names; the migration does not attempt to reproduce Java's Unicode blank-string rules. Adding a new physical unit will also require a migration of the database constraint. There is no name-uniqueness constraint or arbitrary name-length rule.
+
+Flyway applies versioned migrations on application startup. It is the only schema creation/change mechanism; basic `schema.sql`/`data.sql` initialization is disabled and Hibernate uses `ddl-auto: validate`. Hibernate checks the mapping against the migrated schema without generating tables. Open EntityManager in View is disabled; repository operations use their transaction boundaries. Keep applied migrations unchanged and introduce a new version for later schema changes.
+
+Migrations define database constraints and physical column types. Persistence entities keep the mapping needed by Hibernate, including identity and string-enum representation, without repeating SQL constraints or DDL fragments. Domain constructors still validate business objects. Integration tests also bypass JPA to verify that PostgreSQL rejects null names, null units and unsupported units, and verify that long names survive the JPA round trip.
+
+The repository is exercised by integration tests; no item registration/query HTTP routes exist yet. Item equality compares only identity, so persistence tests explicitly compare ID, name and unit to verify the mapping.
 
 ## Stock entries
 
@@ -123,8 +141,11 @@ The first matching quantity is used directly before adding subsequent quantities
 | JDK | 25 |
 | Maven | 3.9.16, provided by the Maven Wrapper |
 | Spring Boot | 4.1.2, managed by the Maven parent |
+| PostgreSQL | 18.6, supplied by the pinned official container image |
+| Docker | A running Docker-compatible environment supported by Testcontainers, for the full test suite |
+| Docker Compose | For the local development database |
 
-A global Maven installation is unnecessary. The first build may require network access to download the Maven distribution and build dependencies.
+A global Maven or PostgreSQL installation is unnecessary. The first build may require network access to download the Maven distribution, dependencies and container images. Database integration tests use disposable PostgreSQL containers, separate from the local development database; they do not require a free host port 5432.
 
 ## Select Java 25
 
@@ -140,7 +161,35 @@ These settings apply to the current shell session. If you use an IDE, also selec
 
 ## Run the application
 
-From the repository root with JDK 25 selected:
+From the repository root, create your local configuration once:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` as needed. Git ignores `.env` and local variants such as `.env.local`; `.env.example` is the versioned template. Only the root `.env` is loaded automatically. Compose reads it for interpolation, and Spring Boot imports it as an optional properties file. Use unquoted `KEY=value` entries without shell `export` statements. Variables already exported in your shell take precedence. Run Maven and the JAR from the repository root so both tools find the same file.
+
+| Variable | Local default | Purpose |
+| --- | --- | --- |
+| `DB_PORT` | `5432` | Published PostgreSQL port and the application's default JDBC URL port. |
+| `DB_USERNAME` | `vestigium` | PostgreSQL initialization user and application database user. |
+| `DB_PASSWORD` | `vestigium-local` | PostgreSQL initialization password and application database password. |
+| `SERVER_PORT` | `8080` | Application HTTP port. |
+| `DB_URL` | Derived from `DB_PORT` | Optional full JDBC URL override; does not reconfigure Compose. |
+
+The example contains local demonstration values. The optional import also allows CI and Testcontainers to run without `.env`; service connections supply their own test database details. See [Spring Boot configuration imports](https://docs.spring.io/spring-boot/reference/features/external-config.html#importing-extensionless-files) and [Compose environment interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
+
+Start the local database:
+
+```bash
+docker compose up -d --wait
+```
+
+Compose exposes PostgreSQL on `127.0.0.1:5432` and keeps its data in a named volume. The PostgreSQL 18 image mounts that volume at `/var/lib/postgresql`. The image's patch version and digest are pinned in both Compose and the test configuration.
+
+The local defaults are database `vestigium`, user `vestigium` and development password `vestigium-local`. `DB_USERNAME` and `DB_PASSWORD` override the corresponding Compose/application values. `DB_URL` overrides the application's JDBC URL. These defaults are for the local demonstration. PostgreSQL initialization variables apply only to an empty data directory; changing them does not rewrite credentials in an existing volume. See the [official image documentation](https://hub.docker.com/_/postgres).
+
+With JDK 25 selected, start the application:
 
 ```bash
 ./mvnw spring-boot:run
@@ -158,7 +207,7 @@ Expect HTTP `200` and the JSON body:
 {"status":"UP"}
 ```
 
-Spring Boot Actuator supplies this endpoint; there is no custom health controller. Only `health` is exposed over HTTP, without component details. Separate liveness/readiness probe groups are disabled for this first local application. `UP` describes the configured application health checks; no database is connected in this increment, and this response does not establish inventory correctness or durable storage.
+Spring Boot Actuator supplies this endpoint; there is no custom health controller. Only `health` is exposed over HTTP, without component details. Separate liveness/readiness probe groups remain disabled. The configured checks now include the database connection. Normal application startup requires the configured database and successful Flyway initialization; `UP` does not establish a complete inventory workflow.
 
 Stop the process with **Ctrl+C**. To use another port on Linux or macOS:
 
@@ -168,6 +217,13 @@ SERVER_PORT=8081 ./mvnw spring-boot:run
 
 Then use port `8081` in the request. The loopback address is the default for this local demonstration; Spring Boot's standard external configuration can override the address and port. Public deployment and authentication are separate future work.
 
+If database port 5432 is occupied, set `DB_PORT=5433` in `.env`. Both Compose and the application's default JDBC URL use that value. Alternatively, supply it for each command:
+
+```bash
+DB_PORT=5433 docker compose up -d --wait
+DB_PORT=5433 ./mvnw spring-boot:run
+```
+
 To build and run the executable JAR:
 
 ```bash
@@ -176,6 +232,14 @@ java -jar target/vestigium-0.0.1-SNAPSHOT.jar
 ```
 
 Use the same health request and **Ctrl+C** to stop. An alternate JAR port can be supplied with `--server.port=8081`. The Spring Boot Maven plugin packages the embedded server and runtime dependencies; Lombok is explicitly excluded. The `.jar.original` file is the intermediate archive, not the executable application.
+
+After stopping the application, stop the local database with:
+
+```bash
+docker compose stop postgres
+```
+
+Run `docker compose up -d --wait` to start it again. The development volume is preserved. `docker compose down` also keeps named volumes unless volume removal is explicitly requested; do not remove the volume when you intend to keep the catalog. Testcontainers manages and removes its own disposable test resources independently.
 
 ## Verify the project
 
@@ -196,12 +260,20 @@ On Windows PowerShell:
 
 A successful build finishes with `BUILD SUCCESS` and a test summary with no failures, errors or skipped tests. JUnit Jupiter provides the test framework, AssertJ supplies fluent assertions, and Maven Surefire runs the tests and rejects an empty suite. The test starter supplies these libraries in test scope; the parent manages AssertJ 3.27.7, and `junit-jupiter.version` retains the aligned JUnit 6.1.3 family. Existing compiler, Surefire, Enforcer and formatter configuration remains explicit. The `verify` phase also creates the executable JAR and checks Java formatting with Spotless.
 
-Domain tests validate item identity, required attributes, movement quantities, stock entry rules and per-item totals from entries. `ApplicationHttpTest` starts a real embedded server on an available port, checks the health response and verifies that `/actuator/env` and `/actuator/info` are not exposed. It closes the HTTP clients and application context after use. The test does not require port 8080 or a database; these checks do not establish a complete inventory workflow.
+Domain tests validate item identity, required attributes, movement quantities, stock entry rules and per-item totals from entries. `JpaItemRepositoryTest` uses real Hibernate/PostgreSQL and the actual Flyway migration to verify round trips, all physical units, preserved names, missing identities, duplicate-ID rejection (including identical content and an identity already loaded in a transaction), shared names and committed data across closed/reopened application contexts. These tests do not rely on rollback-only transactions or an in-memory database.
 
-To run only the tests:
+`ApplicationHttpTest` starts a real embedded server on an available port with a Testcontainers database, checks the health response and verifies that `/actuator/env` and `/actuator/info` are not exposed. HTTP clients, application contexts and test databases are closed after use. Full verification requires a working Docker environment; database tests are not silently skipped when it is missing. These checks do not establish a complete inventory workflow.
+
+To run the full test suite, including database and HTTP integration tests:
 
 ```bash
 ./mvnw test
+```
+
+To run only the domain tests without Docker:
+
+```bash
+./mvnw -Dtest='**/domain/*Test' test
 ```
 
 Coverage includes exact per-item entry totals, empty histories, duplicate-entry rejection, preserved inputs, stateless repeated calls, stock entry construction, duplicate-item rejection, occurrence precision, collection immutability, item identity versus descriptive attributes, required values, blank names, physical units, positive integers/fractions, preservation of scale and precision, rejection of zero/negative/missing quantities, and equality with consistent hash-based lookup. Test reports are written to `target/surefire-reports/`.

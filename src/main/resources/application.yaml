@@ -1,9 +1,23 @@
 spring:
   application:
     name: vestigium
+  config:
+    import: "optional:file:./.env[.properties]"
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://127.0.0.1:${DB_PORT:5432}/vestigium}
+    username: ${DB_USERNAME:vestigium}
+    password: ${DB_PASSWORD:vestigium-local}
+  sql:
+    init:
+      mode: never
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
 
 server:
   address: 127.0.0.1
+  port: ${SERVER_PORT:8080}
 
 management:
   endpoints:
