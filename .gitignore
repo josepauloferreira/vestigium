@@ -1,5 +1,11 @@
 /target/
 .idea/
 *.iml
+
+# Local environment files; keep the shared template versioned.
+.env
+.env.*
+!.env.example
+
 [Aa][Gg][Ee][Nn][Tt][Ss].[Mm][Dd]
 [Aa][Gg][Ee][Nn][Tt][Ss].override.[Mm][Dd]

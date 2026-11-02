@@ -161,7 +161,25 @@ These settings apply to the current shell session. If you use an IDE, also selec
 
 ## Run the application
 
-From the repository root, start the local database:
+From the repository root, create your local configuration once:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` as needed. Git ignores `.env` and local variants such as `.env.local`; `.env.example` is the versioned template. Only the root `.env` is loaded automatically. Compose reads it for interpolation, and Spring Boot imports it as an optional properties file. Use unquoted `KEY=value` entries without shell `export` statements. Variables already exported in your shell take precedence. Run Maven and the JAR from the repository root so both tools find the same file.
+
+| Variable | Local default | Purpose |
+| --- | --- | --- |
+| `DB_PORT` | `5432` | Published PostgreSQL port and the application's default JDBC URL port. |
+| `DB_USERNAME` | `vestigium` | PostgreSQL initialization user and application database user. |
+| `DB_PASSWORD` | `vestigium-local` | PostgreSQL initialization password and application database password. |
+| `SERVER_PORT` | `8080` | Application HTTP port. |
+| `DB_URL` | Derived from `DB_PORT` | Optional full JDBC URL override; does not reconfigure Compose. |
+
+The example contains local demonstration values. The optional import also allows CI and Testcontainers to run without `.env`; service connections supply their own test database details. See [Spring Boot configuration imports](https://docs.spring.io/spring-boot/reference/features/external-config.html#importing-extensionless-files) and [Compose environment interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
+
+Start the local database:
 
 ```bash
 docker compose up -d --wait
@@ -199,11 +217,11 @@ SERVER_PORT=8081 ./mvnw spring-boot:run
 
 Then use port `8081` in the request. The loopback address is the default for this local demonstration; Spring Boot's standard external configuration can override the address and port. Public deployment and authentication are separate future work.
 
-If database port 5432 is occupied, use matching overrides:
+If database port 5432 is occupied, set `DB_PORT=5433` in `.env`. Both Compose and the application's default JDBC URL use that value. Alternatively, supply it for each command:
 
 ```bash
 DB_PORT=5433 docker compose up -d --wait
-DB_URL=jdbc:postgresql://127.0.0.1:5433/vestigium ./mvnw spring-boot:run
+DB_PORT=5433 ./mvnw spring-boot:run
 ```
 
 To build and run the executable JAR:
