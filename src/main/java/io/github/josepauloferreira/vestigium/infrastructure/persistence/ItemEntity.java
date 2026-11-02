@@ -3,7 +3,6 @@ package io.github.josepauloferreira.vestigium.infrastructure.persistence;
 import io.github.josepauloferreira.vestigium.domain.Item;
 import io.github.josepauloferreira.vestigium.domain.ItemId;
 import io.github.josepauloferreira.vestigium.domain.PhysicalUnit;
-import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -25,11 +24,9 @@ public class ItemEntity implements Persistable<UUID> {
 
   @Id @Getter private UUID id;
 
-  @Column(nullable = false, columnDefinition = "text")
   private String name;
 
   @Enumerated(EnumType.STRING)
-  @Column(nullable = false, columnDefinition = "text")
   private PhysicalUnit unit;
 
   @Transient private boolean newEntity = true;

@@ -10,11 +10,15 @@ import io.github.josepauloferreira.vestigium.application.ItemRepository;
 import io.github.josepauloferreira.vestigium.domain.Item;
 import io.github.josepauloferreira.vestigium.domain.ItemId;
 import io.github.josepauloferreira.vestigium.domain.PhysicalUnit;
+import java.sql.SQLException;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.Banner;
@@ -25,6 +29,7 @@ import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -39,6 +44,7 @@ class JpaItemRepositoryTest {
   @Autowired private Flyway flyway;
   @Autowired private PostgreSQLContainer postgres;
   @Autowired private PlatformTransactionManager transactionManager;
+  @Autowired private JdbcTemplate jdbc;
 
   @ParameterizedTest
   @EnumSource(PhysicalUnit.class)
@@ -64,6 +70,38 @@ class JpaItemRepositoryTest {
     repository.insert(item);
 
     assertAttributes(repository.findById(item.id()).orElseThrow(), item);
+  }
+
+  @Test
+  void preservesNamesLongerThanTheDefaultVarcharLength() {
+    Item item = item("Synthetic material ".repeat(100), PhysicalUnit.LITRE);
+
+    repository.insert(item);
+
+    assertAttributes(repository.findById(item.id()).orElseThrow(), item);
+  }
+
+  @ParameterizedTest
+  @MethodSource("invalidDatabaseAttributes")
+  void enforcesMigratedConstraintsWithoutJpa(String name, String unit, String sqlState) {
+    ItemId id = new ItemId(UUID.randomUUID());
+
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "INSERT INTO items (id, name, unit) VALUES (?, ?, ?)", id.value(), name, unit))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .rootCause()
+        .isInstanceOfSatisfying(
+            SQLException.class, cause -> assertThat(cause.getSQLState()).isEqualTo(sqlState));
+    assertThat(repository.findById(id)).isEmpty();
+  }
+
+  private static Stream<Arguments> invalidDatabaseAttributes() {
+    return Stream.of(
+        Arguments.of(null, "KG", "23502"),
+        Arguments.of("Synthetic material", null, "23502"),
+        Arguments.of("Synthetic material", "UNSUPPORTED", "23514"));
   }
 
   @Test

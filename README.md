@@ -46,6 +46,8 @@ The first Flyway migration, `V1__create_items.sql`, creates `items` with a UUID 
 
 Flyway applies versioned migrations on application startup. It is the only schema creation/change mechanism; basic `schema.sql`/`data.sql` initialization is disabled and Hibernate uses `ddl-auto: validate`. Hibernate checks the mapping against the migrated schema without generating tables. Open EntityManager in View is disabled; repository operations use their transaction boundaries. Keep applied migrations unchanged and introduce a new version for later schema changes.
 
+Migrations define database constraints and physical column types. Persistence entities keep the mapping needed by Hibernate, including identity and string-enum representation, without repeating SQL constraints or DDL fragments. Domain constructors still validate business objects. Integration tests also bypass JPA to verify that PostgreSQL rejects null names, null units and unsupported units, and verify that long names survive the JPA round trip.
+
 The repository is exercised by integration tests; no item registration/query HTTP routes exist yet. Item equality compares only identity, so persistence tests explicitly compare ID, name and unit to verify the mapping.
 
 ## Stock entries
