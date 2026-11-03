@@ -10,7 +10,7 @@ The project originates from a warehouse process where quantities are updated dir
 
 The domain represents items with stable identity and a physical unit, positive fractional movement quantities, stock entries with an explicit occurrence time and one line per item, and per-item balances derived from supplied entries. `MovementQuantity` stores a `BigDecimal` without rounding or changing its scale. Quantities such as `1.5` and `1.50` have equal numeric meaning and consistent hashes while retaining their original representation.
 
-These rules have unit tests. A Spring Boot application exposes item registration/lookup and basic health over HTTP and runs as an executable JAR. The item catalog and complete stock entries use Spring Data JPA and Hibernate with PostgreSQL, Flyway migrations and real-database integration tests. Entries preserve ordered lines and commit atomically. Stock-entry HTTP routes and other movement types have not been implemented. Entry-derived totals are not yet complete operational stock balances.
+These rules have unit tests. A Spring Boot application exposes item and stock-entry registration/lookup and basic health over HTTP and runs as an executable JAR. The item catalog and complete stock entries use Spring Data JPA and Hibernate with PostgreSQL, Flyway migrations and real-database integration tests. Entries preserve ordered lines and commit atomically. Other movement types have not been implemented. Entry-derived totals are not yet complete operational stock balances.
 
 ## Items and physical units
 
@@ -123,7 +123,7 @@ Each item may occur only once within an entry. Duplicate `ItemId` values throw `
 
 Missing required values or a null line throw `NullPointerException`; an empty line list throws `IllegalArgumentException`. `List.copyOf` preserves line order and protects entries against changes to the caller's collection. The exposed list is unmodifiable, and line components are immutable. Lombok generates read-only accessors; constructor validation and identity equality remain explicit.
 
-Equal entry identifiers denote the same entity; identical occurrence/lines with different identifiers represent separate entries. A domain line references `ItemId` without performing database access. During persistence, foreign keys require every referenced item to exist in the catalog. Entry objects preserve receipt facts; StockBalanceCalculator derives totals separately. Stock-entry HTTP routes and a correction workflow remain future work.
+Equal entry identifiers denote the same entity; identical occurrence/lines with different identifiers represent separate entries. A domain line references `ItemId` without performing database access. During persistence, foreign keys require every referenced item to exist in the catalog. Entry objects preserve receipt facts; StockBalanceCalculator derives totals separately. Stock-entry HTTP routes expose receipt creation/lookup; a correction workflow remains future work.
 
 ### Durable stock entries
 
@@ -134,6 +134,46 @@ Flyway V2 creates `stock_entries` and `stock_entry_lines`. The header stores the
 `StockEntryEntity` maps its owned line values using `@ElementCollection`, `@CollectionTable` and `@OrderColumn`. These lines have no separate entity identity or repository. A separate embeddable persistence record maps them while the domain `StockEntryLine` remains independent of JPA. Read operations reconstruct the domain inside a read-only transaction so lazy collection loading does not depend on an open web request.
 
 Quantity storage uses unconstrained PostgreSQL `NUMERIC`, with a separate original `quantity_scale`. When needed to fit the fractional storage limit, the persistence mapping removes trailing zeroes from the stored magnitude. It reconstructs the original scale with `RoundingMode.UNNECESSARY`, preserving values such as `1.50` and `1E+3`. Before binding JDBC values, it rejects magnitudes outside PostgreSQL's physical limits: more than 131,072 integer digits or more than 16,383 necessary fractional digits. This is a storage boundary, not a new domain decimal policy. Unsupported quantities and dates outside the database range fail instead of becoming rounded values or infinity. See [PostgreSQL numeric types](https://www.postgresql.org/docs/18/datatype-numeric.html) and [date/time types](https://www.postgresql.org/docs/18/datatype-datetime.html).
+
+## Stock-entry HTTP API
+
+Register each referenced item through `POST /items` first. For this example, the item ending in `201` is the synthetic oil registered above. Register a second synthetic item:
+
+```bash
+curl --include --header 'Content-Type: application/json' \
+  --data '{"id":"00000000-0000-0000-0000-000000000202","name":"Synthetic boots","unit":"PAIR"}' \
+  http://127.0.0.1:8080/items
+```
+
+Then submit the receipt:
+
+```bash
+curl --include --header 'Content-Type: application/json' \
+  --header 'Accept: application/json' \
+  --data '{"id":"00000000-0000-0000-0000-000000000301","occurredAt":"2026-11-03T14:30:00.123456Z","lines":[{"itemId":"00000000-0000-0000-0000-000000000201","quantity":1.50},{"itemId":"00000000-0000-0000-0000-000000000202","quantity":4}]}' \
+  http://127.0.0.1:8080/stock-entries
+```
+
+Expect `201 Created`, `Location: /stock-entries/00000000-0000-0000-0000-000000000301` and a JSON object containing `id`, `occurredAt` and ordered `lines` with `itemId` and `quantity`. Each line uses the referenced item's physical unit; there is no separate unit or conversion in the receipt.
+
+```bash
+curl --include --header 'Accept: application/json' \
+  http://127.0.0.1:8080/stock-entries/00000000-0000-0000-0000-000000000301
+```
+
+Expect `200 OK` with the complete stored receipt, including after application restart. Decimal quantities bind directly to `BigDecimal` and retain their numeric value and scale; use JSON numbers, not quoted numeric strings. A consuming client must also avoid converting exact decimals through floating point if it needs that precision.
+
+Supply `occurredAt` as an ISO 8601 date/time with `Z` or an explicit offset, such as `2026-11-03T11:30:00.123456-03:00`. The response expresses the same instant in UTC. Date-only and timezone-free input are rejected. The existing microsecond precision rule applies without rounding/truncation; no future-date or backdating restriction is added.
+
+| Result | Meaning |
+| --- | --- |
+| `400 Bad Request` | Invalid JSON/types/UUIDs, missing fields, empty/null-containing lines, nonpositive quantities, repeated item IDs or unsupported occurrence precision. |
+| `404 Not Found` | No entry with the requested valid identity. |
+| `409 Conflict` | Entry ID already exists, even for identical contents; the original receipt remains unchanged. |
+| `422 Unprocessable Content` | A referenced item is absent, or a specifically identified numeric/timestamp value cannot be stored exactly. |
+| `500 Internal Server Error` | Unexpected persistence failure; it is not relabeled as a client input error. |
+
+Errors follow the existing safe ProblemDetail format. Nested field errors identify paths such as `lines[0].quantity`. The persistence adapter translates the specific catalog foreign-key violation and known storage-range failures while preserving their causes; it does not classify arbitrary integrity errors by SQL message text. The entire receipt is one transaction: an unknown item in a later line leaves neither a header nor earlier lines stored. Different entry IDs may contain identical receipt facts; repeated items within one entry are rejected without summing.
 
 ## Movement quantity
 
@@ -312,6 +352,8 @@ Domain tests validate item identity, required attributes, movement quantities, s
 `ApplicationHttpTest` starts a real embedded server on an available port with a Testcontainers database, checks the health response and verifies that `/actuator/env` and `/actuator/info` are not exposed. HTTP clients, application contexts and test databases are closed after use. Full verification requires a working Docker environment; database tests are not silently skipped when it is missing. These checks do not establish a complete inventory workflow.
 
 `ItemHttpTest` drives the item API through a real HTTP server and PostgreSQL. It verifies creation/Location, exact responses, all units, Unicode/long names, invalid requests without writes, safe ProblemDetail errors and unchanged original data after conflicts. It also closes/reopens HTTP application contexts to retrieve committed data. A test-only table rename provokes a real persistence failure and verifies a generic 500 response; the table is restored in the disposable database before the test finishes.
+
+`StockEntryHttpTest` verifies the request-to-database-to-response path for ordered receipts, exact decimals/times, nested validation, unknown references, duplicate identities, safe server failures and retrieval across application restarts. Repository tests retain the late-line failure probe that verifies transaction rollback.
 
 To run the full test suite, including database and HTTP integration tests:
 

@@ -1,5 +1,6 @@
 package io.github.josepauloferreira.vestigium.infrastructure.persistence;
 
+import io.github.josepauloferreira.vestigium.application.InvalidStockEntryDataException;
 import io.github.josepauloferreira.vestigium.domain.ItemId;
 import io.github.josepauloferreira.vestigium.domain.MovementQuantity;
 import io.github.josepauloferreira.vestigium.domain.StockEntryLine;
@@ -8,7 +9,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Objects;
 import java.util.UUID;
-import org.springframework.dao.DataIntegrityViolationException;
 
 @Embeddable
 record StockEntryLineValue(UUID itemId, BigDecimal quantity, int quantityScale) {
@@ -29,12 +29,12 @@ record StockEntryLineValue(UUID itemId, BigDecimal quantity, int quantityScale) 
   private static BigDecimal supportedQuantity(BigDecimal supplied) {
     long integerDigits = (long) supplied.precision() - supplied.scale();
     if (integerDigits > 131_072) {
-      throw new DataIntegrityViolationException(
+      throw new InvalidStockEntryDataException(
           "Stock entry quantity exceeds PostgreSQL NUMERIC storage limits");
     }
     BigDecimal exact = supplied.scale() > 16_383 ? supplied.stripTrailingZeros() : supplied;
     if (exact.scale() > 16_383) {
-      throw new DataIntegrityViolationException(
+      throw new InvalidStockEntryDataException(
           "Stock entry quantity exceeds PostgreSQL NUMERIC storage limits");
     }
     return exact;

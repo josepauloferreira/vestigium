@@ -1,6 +1,8 @@
 package io.github.josepauloferreira.vestigium.infrastructure.web;
 
 import io.github.josepauloferreira.vestigium.application.DuplicateItemIdException;
+import io.github.josepauloferreira.vestigium.application.DuplicateStockEntryIdException;
+import io.github.josepauloferreira.vestigium.application.InvalidStockEntryDataException;
 import java.util.Comparator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
@@ -31,6 +33,18 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     log.error("Request failed while accessing persistence", exception);
     return ProblemDetail.forStatusAndDetail(
         HttpStatus.INTERNAL_SERVER_ERROR, "Unable to complete the request");
+  }
+
+  @ExceptionHandler(DuplicateStockEntryIdException.class)
+  ProblemDetail duplicateStockEntry(DuplicateStockEntryIdException exception) {
+    return ProblemDetail.forStatusAndDetail(
+        HttpStatus.CONFLICT, "A stock entry with this ID already exists");
+  }
+
+  @ExceptionHandler(InvalidStockEntryDataException.class)
+  ProblemDetail invalidStockEntryData(InvalidStockEntryDataException exception) {
+    return ProblemDetail.forStatusAndDetail(
+        HttpStatus.UNPROCESSABLE_CONTENT, exception.getMessage());
   }
 
   @Override
