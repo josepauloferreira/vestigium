@@ -19,7 +19,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class StockEntryTest {
   private static final StockEntryId ID =
       new StockEntryId(UUID.fromString("00000000-0000-0000-0000-000000000101"));
-  private static final Instant OCCURRED_AT = Instant.parse("2026-10-28T13:15:00.123456789Z");
+  private static final Instant OCCURRED_AT = Instant.parse("2026-10-28T13:15:00.123456Z");
   private static final ItemId OIL_ID =
       new ItemId(UUID.fromString("00000000-0000-0000-0000-000000000001"));
   private static final ItemId BOOTS_ID =
@@ -163,12 +163,31 @@ class StockEntryTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"2020-01-01T00:00:00Z", "2099-12-31T23:59:59.123456789Z"})
+  @ValueSource(
+      strings = {
+        "2020-01-01T00:00:00Z",
+        "2099-12-31T23:59:59.123456Z",
+        "1969-12-31T23:59:59.999999Z",
+        "2026-01-01T00:00:00.000001Z"
+      })
   void preservesSuppliedTimesWithoutAnImplicitCurrentTimePolicy(String input) {
     Instant occurredAt = Instant.parse(input);
 
     StockEntry entry = new StockEntry(ID, occurredAt, List.of(OIL));
 
     assertThat(entry.occurredAt()).isEqualTo(occurredAt);
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "2026-01-01T00:00:00.000000001Z",
+        "2026-01-01T00:00:00.123456789Z",
+        "1969-12-31T23:59:59.999999999Z"
+      })
+  void rejectsSubMicrosecondPrecisionWithoutRounding(String input) {
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> new StockEntry(ID, Instant.parse(input), List.of(OIL)))
+        .withMessage("Stock entry occurrence time must use microsecond precision");
   }
 }

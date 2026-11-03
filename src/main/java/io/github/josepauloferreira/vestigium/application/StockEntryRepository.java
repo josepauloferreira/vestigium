@@ -1,0 +1,13 @@
+package io.github.josepauloferreira.vestigium.application;
+
+import io.github.josepauloferreira.vestigium.domain.StockEntry;
+import io.github.josepauloferreira.vestigium.domain.StockEntryId;
+import java.util.Optional;
+
+public interface StockEntryRepository {
+
+  /** Creates the complete entry atomically; an existing identity is rejected without overwrite. */
+  void insert(StockEntry entry);
+
+  Optional<StockEntry> findById(StockEntryId id);
+}
