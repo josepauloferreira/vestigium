@@ -18,6 +18,7 @@ public final class StockEntry {
   public StockEntry(StockEntryId id, Instant occurredAt, List<StockEntryLine> lines) {
     this.id = Objects.requireNonNull(id, "Stock entry ID is required");
     this.occurredAt = Objects.requireNonNull(occurredAt, "Stock entry occurrence time is required");
+    requireMicrosecondPrecision(occurredAt);
     this.lines = List.copyOf(Objects.requireNonNull(lines, "Stock entry lines are required"));
 
     if (this.lines.isEmpty()) {
@@ -30,6 +31,13 @@ public final class StockEntry {
       if (!itemIds.add(line.itemId())) {
         throw new IllegalArgumentException("Stock entry must contain each item at most once");
       }
+    }
+  }
+
+  private static void requireMicrosecondPrecision(Instant occurredAt) {
+    if (occurredAt.getNano() % 1_000 != 0) {
+      throw new IllegalArgumentException(
+          "Stock entry occurrence time must use microsecond precision");
     }
   }
 
