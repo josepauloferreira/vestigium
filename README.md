@@ -10,7 +10,7 @@ The project originates from a warehouse process where quantities are updated dir
 
 The domain represents items with stable identity and a physical unit, positive fractional movement quantities, stock entries with an explicit occurrence time and one line per item, and per-item balances derived from supplied entries. `MovementQuantity` stores a `BigDecimal` without rounding or changing its scale. Quantities such as `1.5` and `1.50` have equal numeric meaning and consistent hashes while retaining their original representation.
 
-These rules have unit tests. A Spring Boot application exposes a basic HTTP health endpoint and runs as an executable JAR. The item catalog and complete stock entries use Spring Data JPA and Hibernate with PostgreSQL, Flyway migrations and real-database integration tests. Entries preserve ordered lines and commit atomically. Business HTTP endpoints and other movement types have not been implemented. Entry-derived totals are not yet complete operational stock balances.
+These rules have unit tests. A Spring Boot application exposes item registration/lookup and basic health over HTTP and runs as an executable JAR. The item catalog and complete stock entries use Spring Data JPA and Hibernate with PostgreSQL, Flyway migrations and real-database integration tests. Entries preserve ordered lines and commit atomically. Stock-entry HTTP routes and other movement types have not been implemented. Entry-derived totals are not yet complete operational stock balances.
 
 ## Items and physical units
 
@@ -48,7 +48,42 @@ Flyway applies versioned migrations on application startup. It is the only schem
 
 Migrations define database constraints and physical column types. Persistence entities keep the mapping needed by Hibernate, including identity and string-enum representation, without repeating SQL constraints or DDL fragments. Domain constructors still validate business objects. Integration tests also bypass JPA to verify that PostgreSQL rejects null names, null units and unsupported units, and verify that long names survive the JPA round trip.
 
-The repository is exercised by integration tests; no item registration/query HTTP routes exist yet. Item equality compares only identity, so persistence tests explicitly compare ID, name and unit to verify the mapping.
+The repository and item HTTP routes are exercised by integration tests. Item equality compares only identity, so tests explicitly compare ID, name and unit to verify the complete representation.
+
+## Item HTTP API
+
+Start the database and application as described under [Run the application](#run-the-application). Register a synthetic item:
+
+```bash
+curl --include --header 'Content-Type: application/json' \
+  --header 'Accept: application/json' \
+  --data '{"id":"00000000-0000-0000-0000-000000000201","name":"Synthetic hydraulic oil","unit":"LITRE"}' \
+  http://127.0.0.1:8080/items
+```
+
+Expect `201 Created`, `Location: /items/00000000-0000-0000-0000-000000000201` and the stored `id`, `name` and `unit` as JSON. The caller supplies a canonical UUID in its full hyphenated form; uppercase hexadecimal is accepted. A repeated ID returns `409 Conflict` even with identical contents. Use a fresh UUID for a new item; different IDs may share a name.
+
+Query the created item:
+
+```bash
+curl --include --header 'Accept: application/json' \
+  http://127.0.0.1:8080/items/00000000-0000-0000-0000-000000000201
+```
+
+Expect `200 OK` with the same attributes, including after application restart. Successful responses use `application/json` and contain only `id`, `name` and `unit`.
+
+| Result | Meaning |
+| --- | --- |
+| `201 Created` | Item stored successfully; `Location` identifies its GET address. |
+| `200 OK` | Existing item returned. |
+| `400 Bad Request` | Missing/invalid fields, malformed JSON/UUID, unsupported unit or incompatible JSON types. |
+| `404 Not Found` | Valid identity with no stored item. |
+| `409 Conflict` | Identity already exists; original attributes remain stored. |
+| `500 Internal Server Error` | Unexpected persistence failure; database diagnostics are not returned. |
+
+Error responses use `application/problem+json` with `title`, `status`, `detail` and `instance`. The default `type` is `about:blank` and can be omitted, as specified by [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html#section-3.1.1). Field-validation errors also include an `errors` list with `field` and `message`; rejected values are not echoed. HTTP error rendering uses Spring's [ProblemDetail support](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-ann-rest-exceptions.html).
+
+Requests require `id`, a nonblank `name` and a `unit` from `PAIR`, `UNIT`, `LITRE`, `ROLL` or `KG`. Names preserve supported Unicode, whitespace and case, without an added length restriction. NUL and unpaired Unicode surrogates are rejected at the HTTP boundary because they cannot be preserved as PostgreSQL UTF-8 text. JSON numbers/booleans are not converted into text fields, and units cannot be submitted as numeric enum positions. Request/response records are separate from the domain and JPA classes; controller operations use the existing `ItemRepository` contract.
 
 ## Stock entries
 
@@ -88,7 +123,7 @@ Each item may occur only once within an entry. Duplicate `ItemId` values throw `
 
 Missing required values or a null line throw `NullPointerException`; an empty line list throws `IllegalArgumentException`. `List.copyOf` preserves line order and protects entries against changes to the caller's collection. The exposed list is unmodifiable, and line components are immutable. Lombok generates read-only accessors; constructor validation and identity equality remain explicit.
 
-Equal entry identifiers denote the same entity; identical occurrence/lines with different identifiers represent separate entries. A domain line references `ItemId` without performing database access. During persistence, foreign keys require every referenced item to exist in the catalog. Entry objects preserve receipt facts; StockBalanceCalculator derives totals separately. There is no registration endpoint or correction workflow.
+Equal entry identifiers denote the same entity; identical occurrence/lines with different identifiers represent separate entries. A domain line references `ItemId` without performing database access. During persistence, foreign keys require every referenced item to exist in the catalog. Entry objects preserve receipt facts; StockBalanceCalculator derives totals separately. Stock-entry HTTP routes and a correction workflow remain future work.
 
 ### Durable stock entries
 
@@ -217,7 +252,7 @@ Expect HTTP `200` and the JSON body:
 {"status":"UP"}
 ```
 
-Spring Boot Actuator supplies this endpoint; there is no custom health controller. Only `health` is exposed over HTTP, without component details. Separate liveness/readiness probe groups remain disabled. The configured checks now include the database connection. Normal application startup requires the configured database and successful Flyway initialization; `UP` does not establish a complete inventory workflow.
+Spring Boot Actuator supplies this endpoint; there is no custom health controller. Among management endpoints, only `health` is exposed over HTTP, without component details. Separate liveness/readiness probe groups remain disabled. The configured checks now include the database connection. Normal application startup requires the configured database and successful Flyway initialization; `UP` does not establish a complete inventory workflow.
 
 Stop the process with **Ctrl+C**. To use another port on Linux or macOS:
 
@@ -275,6 +310,8 @@ Domain tests validate item identity, required attributes, movement quantities, s
 `JpaStockEntryRepositoryTest` verifies complete ordered entries, exact occurrence times, decimal values/scales (including storage boundaries), duplicate identity handling, foreign keys, database constraints, committed data across closed/reopened contexts and V1-to-V2 upgrades with existing items. A test-only trigger deliberately fails a later line after observing the header and first line in the same transaction. A nontransactional sequence records that observation; separate reads then prove the failed entry left no rows. The trigger/function/sequence are removed from the disposable test database after the test and are never installed by application migrations.
 
 `ApplicationHttpTest` starts a real embedded server on an available port with a Testcontainers database, checks the health response and verifies that `/actuator/env` and `/actuator/info` are not exposed. HTTP clients, application contexts and test databases are closed after use. Full verification requires a working Docker environment; database tests are not silently skipped when it is missing. These checks do not establish a complete inventory workflow.
+
+`ItemHttpTest` drives the item API through a real HTTP server and PostgreSQL. It verifies creation/Location, exact responses, all units, Unicode/long names, invalid requests without writes, safe ProblemDetail errors and unchanged original data after conflicts. It also closes/reopens HTTP application contexts to retrieve committed data. A test-only table rename provokes a real persistence failure and verifies a generic 500 response; the table is restored in the disposable database before the test finishes.
 
 To run the full test suite, including database and HTTP integration tests:
 
