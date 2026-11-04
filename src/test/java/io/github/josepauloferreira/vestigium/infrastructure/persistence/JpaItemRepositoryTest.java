@@ -172,7 +172,9 @@ class JpaItemRepositoryTest {
 
   @Test
   void appliesTheVersionedSchemaWithoutReapplyingIt() {
-    assertThat(flyway.info().applied()).hasSize(2);
+    assertThat(flyway.info().applied())
+        .extracting(info -> info.getVersion().toString())
+        .containsExactly("1", "2", "3");
     assertThat(flyway.migrate().migrationsExecuted).isZero();
   }
 

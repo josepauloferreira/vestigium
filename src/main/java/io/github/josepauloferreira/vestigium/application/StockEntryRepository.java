@@ -1,7 +1,9 @@
 package io.github.josepauloferreira.vestigium.application;
 
+import io.github.josepauloferreira.vestigium.domain.ItemId;
 import io.github.josepauloferreira.vestigium.domain.StockEntry;
 import io.github.josepauloferreira.vestigium.domain.StockEntryId;
+import java.util.List;
 import java.util.Optional;
 
 public interface StockEntryRepository {
@@ -10,4 +12,9 @@ public interface StockEntryRepository {
   void insert(StockEntry entry);
 
   Optional<StockEntry> findById(StockEntryId id);
+
+  /**
+   * Returns complete receipts containing this item, ordered by occurrence and database UUID order.
+   */
+  List<StockEntry> findByItemId(ItemId itemId);
 }

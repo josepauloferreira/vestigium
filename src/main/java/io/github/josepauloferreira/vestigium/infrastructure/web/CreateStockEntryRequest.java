@@ -1,5 +1,6 @@
 package io.github.josepauloferreira.vestigium.infrastructure.web;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -20,6 +21,7 @@ public record CreateStockEntryRequest(
   static final String UUID_PATTERN =
       "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
+  @Schema(name = "StockEntryRequestLine")
   public record Line(
       @NotNull(message = "itemId is required")
           @Pattern(regexp = UUID_PATTERN, message = "itemId must be a canonical UUID")

@@ -30,3 +30,11 @@ management:
       show-components: never
       probes:
         enabled: false
+
+springdoc:
+  paths-to-match:
+    - /items/**
+    - /stock-entries/**
+  override-with-generic-response: false
+  swagger-ui:
+    disable-swagger-default-url: true

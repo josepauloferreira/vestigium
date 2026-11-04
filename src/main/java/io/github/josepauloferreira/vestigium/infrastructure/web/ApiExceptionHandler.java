@@ -3,6 +3,7 @@ package io.github.josepauloferreira.vestigium.infrastructure.web;
 import io.github.josepauloferreira.vestigium.application.DuplicateItemIdException;
 import io.github.josepauloferreira.vestigium.application.DuplicateStockEntryIdException;
 import io.github.josepauloferreira.vestigium.application.InvalidStockEntryDataException;
+import io.github.josepauloferreira.vestigium.application.ItemNotFoundException;
 import java.util.Comparator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
@@ -26,6 +27,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
   ProblemDetail duplicateItem(DuplicateItemIdException exception) {
     return ProblemDetail.forStatusAndDetail(
         HttpStatus.CONFLICT, "An item with this ID already exists");
+  }
+
+  @ExceptionHandler(ItemNotFoundException.class)
+  ProblemDetail missingItem(ItemNotFoundException exception) {
+    return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "Item was not found");
   }
 
   @ExceptionHandler(DataAccessException.class)

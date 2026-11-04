@@ -3,10 +3,12 @@ package io.github.josepauloferreira.vestigium.infrastructure.persistence;
 import io.github.josepauloferreira.vestigium.application.DuplicateStockEntryIdException;
 import io.github.josepauloferreira.vestigium.application.InvalidStockEntryDataException;
 import io.github.josepauloferreira.vestigium.application.StockEntryRepository;
+import io.github.josepauloferreira.vestigium.domain.ItemId;
 import io.github.josepauloferreira.vestigium.domain.StockEntry;
 import io.github.josepauloferreira.vestigium.domain.StockEntryId;
 import jakarta.persistence.EntityExistsException;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -77,5 +79,14 @@ public class JpaStockEntryRepository implements StockEntryRepository {
       }
     }
     return false;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<StockEntry> findByItemId(ItemId itemId) {
+    Objects.requireNonNull(itemId, "Item ID is required");
+    return repository.findByItemId(itemId.value()).stream()
+        .map(StockEntryEntity::toDomain)
+        .toList();
   }
 }
