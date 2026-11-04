@@ -10,7 +10,7 @@ The project originates from a warehouse process where quantities are updated dir
 
 The domain represents items with stable identity and a physical unit, positive fractional movement quantities, stock entries with an explicit occurrence time and one line per item, and per-item balances derived from supplied entries. `MovementQuantity` stores a `BigDecimal` without rounding or changing its scale. Quantities such as `1.5` and `1.50` have equal numeric meaning and consistent hashes while retaining their original representation.
 
-These rules have unit tests. A Spring Boot application exposes item and stock-entry registration/lookup and basic health over HTTP and runs as an executable JAR. The item catalog and complete stock entries use Spring Data JPA and Hibernate with PostgreSQL, Flyway migrations and real-database integration tests. Entries preserve ordered lines and commit atomically. Other movement types have not been implemented. Entry-derived totals are not yet complete operational stock balances.
+These rules have unit tests. A Spring Boot application exposes item and stock-entry registration/lookup and basic health over HTTP and runs as an executable JAR. Item balance/history queries derive quantities from persisted receipts. OpenAPI and Swagger UI document the business API. The item catalog and complete stock entries use Spring Data JPA and Hibernate with PostgreSQL, Flyway migrations and real-database integration tests. Entries preserve ordered lines and commit atomically. Other movement types have not been implemented. Entry-derived totals are not yet complete operational stock balances.
 
 ## Items and physical units
 
@@ -219,6 +219,60 @@ Every supplied entry participates regardless of `occurredAt`. This is a total ov
 
 The first matching quantity is used directly before adding subsequent quantities. This avoids an unnecessary zero addition that cannot align every valid extreme `BigDecimal` scale; a regression test covers the minimum supported scale.
 
+## Item balance and receipt history
+
+After registering the synthetic items/receipt above, record another receipt of 0.75 L for the item ending in `201`:
+
+```bash
+curl --include --header 'Content-Type: application/json' \
+  --data '{"id":"00000000-0000-0000-0000-000000000302","occurredAt":"2026-11-03T15:30:00Z","lines":[{"itemId":"00000000-0000-0000-0000-000000000201","quantity":0.75}]}' \
+  http://127.0.0.1:8080/stock-entries
+```
+
+Query its entry-derived balance:
+
+```bash
+curl --include http://127.0.0.1:8080/items/00000000-0000-0000-0000-000000000201/balance
+```
+
+Expect `200 OK` and:
+
+```json
+{
+  "itemId": "00000000-0000-0000-0000-000000000201",
+  "unit": "LITRE",
+  "quantity": 2.25
+}
+```
+
+Explain that total through its recorded receipts:
+
+```bash
+curl --include http://127.0.0.1:8080/items/00000000-0000-0000-0000-000000000201/stock-entries
+```
+
+Expect `200 OK` with `itemId`, `unit` and an `entries` array. Each entry contains `entryId`, UTC `occurredAt` and this item's exact `quantity`. The example yields 1.50 and 0.75 in occurrence order. Equal timestamps are ordered by the database UUID order. The existing `GET /stock-entries/{id}` returns the complete multi-item receipt.
+
+A known item without receipts has numeric zero and an empty history; an unknown catalog identity returns 404, and an invalid UUID returns 400. Unexpected persistence failures retain the safe 500 ProblemDetail response.
+
+All recorded occurrence times participate, including future-dated entries; the queries apply no automatic current-time cutoff. History returns all receipts for the selected item, without pagination/date filters or truncation. The quantity is the exact total of recorded receipts; INITIAL_STOCK, exits, returns and adjustments remain future work. The result does not establish a physical count. BigDecimal arithmetic has no fixed display scale, and individual history quantities retain their original scale.
+
+The application coordinates catalog lookup, a JPA query for matching complete receipts and StockBalanceCalculator. It fetches their line collections together, preserving complete aggregates and avoiding a collection query for every receipt. Flyway V3 adds `stock_entry_lines_item_id_idx` for the new item-filtered access path; V1/V2 remain unchanged. This index has storage/write cost; no measured speedup is asserted. Query plans depend on data and PostgreSQL's planner.
+
+## OpenAPI and Swagger UI
+
+With the application running on its default port, open:
+
+- [Swagger UI](http://127.0.0.1:8080/swagger-ui/index.html) to browse operations and issue requests.
+- [OpenAPI JSON](http://127.0.0.1:8080/v3/api-docs) for the machine-readable description.
+- [OpenAPI YAML](http://127.0.0.1:8080/v3/api-docs.yaml) for the YAML representation.
+
+Adjust the port if SERVER_PORT is configured. The pinned `springdoc-openapi-starter-webmvc-ui` 3.2.0 generates the description from controller mappings, transport models, validation and focused OpenAPI metadata. Its Spring Boot 4.1 compatibility is documented in the [official matrix](https://springdoc.org/faq.html); endpoint defaults are in the [springdoc documentation](https://springdoc.org/).
+
+The description includes item/receipt creation and lookup, item balances and item receipt history, with required fields, canonical UUIDs, exact numeric semantics, synthetic examples, Location headers and the actual ProblemDetail statuses. Swagger UI uses this application's description. Requests executed in Swagger UI perform real operations against the configured database; use synthetic review data.
+
+Register an item first, then reference that ID when recording a receipt. Use JSON numeric quantities and explicit-offset/Z occurrence times with microsecond precision. OpenAPI describes quantities as numbers without promising binary double precision. Browser/JavaScript clients may normalize displayed decimal values; consumers needing exact decimal semantics should use suitable numeric types.
+
 ## Requirements
 
 | Tool | Version |
@@ -354,6 +408,8 @@ Domain tests validate item identity, required attributes, movement quantities, s
 `ItemHttpTest` drives the item API through a real HTTP server and PostgreSQL. It verifies creation/Location, exact responses, all units, Unicode/long names, invalid requests without writes, safe ProblemDetail errors and unchanged original data after conflicts. It also closes/reopens HTTP application contexts to retrieve committed data. A test-only table rename provokes a real persistence failure and verifies a generic 500 response; the table is restored in the disposable database before the test finishes.
 
 `StockEntryHttpTest` verifies the request-to-database-to-response path for ordered receipts, exact decimals/times, nested validation, unknown references, duplicate identities, safe server failures and retrieval across application restarts. Repository tests retain the late-line failure probe that verifies transaction rollback.
+
+`ItemStockHttpTest` verifies item isolation, exact totals, zero versus missing items, ordered/scaled receipt summaries and safe failures. Repository tests verify complete aggregate loading in one SQL statement and V2-to-V3 preservation. `OpenApiHttpTest` checks the generated paths, statuses, schemas, decimal types, YAML and Swagger UI resources.
 
 To run the full test suite, including database and HTTP integration tests:
 
