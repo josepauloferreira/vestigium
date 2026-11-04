@@ -16,12 +16,14 @@ import io.github.josepauloferreira.vestigium.domain.PhysicalUnit;
 import io.github.josepauloferreira.vestigium.domain.StockEntry;
 import io.github.josepauloferreira.vestigium.domain.StockEntryId;
 import io.github.josepauloferreira.vestigium.domain.StockEntryLine;
+import jakarta.persistence.EntityManagerFactory;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
+import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -52,6 +54,7 @@ class JpaStockEntryRepositoryTest {
   @Autowired private JdbcTemplate jdbc;
   @Autowired private PostgreSQLContainer postgres;
   @Autowired private PlatformTransactionManager transactionManager;
+  @Autowired private EntityManagerFactory entityManagerFactory;
 
   @Test
   void preservesTheCompleteEntryAndItsLineOrder() {
@@ -330,11 +333,11 @@ class JpaStockEntryRepositoryTest {
               .schemas(schema)
               .defaultSchema(schema)
               .load();
-      assertThat(latest.migrate().migrationsExecuted).isEqualTo(1);
+      assertThat(latest.migrate().migrationsExecuted).isEqualTo(2);
       assertThat(latest.info().applied())
           .filteredOn(info -> info.getVersion() != null)
           .extracting(info -> info.getVersion().toString())
-          .containsExactly("1", "2");
+          .containsExactly("1", "2", "3");
       assertThat(latest.migrate().migrationsExecuted).isZero();
       assertThat(
               jdbc.queryForMap("SELECT id, name, unit FROM " + schema + ".items WHERE id = ?", id))
@@ -350,6 +353,127 @@ class JpaStockEntryRepositoryTest {
     Item item = new Item(new ItemId(UUID.randomUUID()), "Synthetic material", PhysicalUnit.LITRE);
     items.insert(item);
     return new StockEntryLine(item.id(), new MovementQuantity(new BigDecimal(quantity)));
+  }
+
+  @Test
+  void queriesOnlyMatchingReceiptsAndPreservesTheirCompleteLines() {
+    StockEntryLine wanted = line("1.50");
+    StockEntryLine other = line("0.7500");
+    StockEntry first = entry(other, wanted);
+    StockEntry second =
+        entry(new StockEntryLine(wanted.itemId(), MovementQuantity.of(new BigDecimal("2.00"))));
+    entries.insert(first);
+    entries.insert(second);
+    entries.insert(entry(line("99")));
+
+    List<StockEntry> found = entries.findByItemId(wanted.itemId());
+
+    assertThat(found).hasSize(2);
+    assertAttributes(
+        found.stream().filter(e -> e.id().equals(first.id())).findFirst().orElseThrow(), first);
+    assertAttributes(
+        found.stream().filter(e -> e.id().equals(second.id())).findFirst().orElseThrow(), second);
+  }
+
+  @Test
+  void ordersMatchingReceiptsByTimeThenDatabaseUuidOrder() {
+    StockEntryLine wanted = line("1");
+    StockEntry low =
+        new StockEntry(
+            new StockEntryId(UUID.fromString("00000000-0000-0000-0000-000000000001")),
+            OCCURRED_AT,
+            List.of(wanted));
+    StockEntry high =
+        new StockEntry(
+            new StockEntryId(UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff")),
+            OCCURRED_AT,
+            List.of(wanted));
+    StockEntry earlier =
+        new StockEntry(
+            new StockEntryId(UUID.randomUUID()), OCCURRED_AT.minusSeconds(1), List.of(wanted));
+    entries.insert(high);
+    entries.insert(earlier);
+    entries.insert(low);
+
+    assertThat(entries.findByItemId(wanted.itemId()))
+        .extracting(StockEntry::id)
+        .containsExactly(earlier.id(), low.id(), high.id());
+  }
+
+  @Test
+  void returnsAnEmptyHistoryWhenNoReceiptMatches() {
+    assertThat(entries.findByItemId(line("1").itemId())).isEmpty();
+    assertThat(entries.findByItemId(new ItemId(UUID.randomUUID()))).isEmpty();
+  }
+
+  @Test
+  void loadsCompleteHistoriesWithoutPerReceiptCollectionQueries() {
+    StockEntryLine wanted = line("1.50");
+    entries.insert(entry(wanted, line("2")));
+    entries.insert(entry(line("3"), wanted));
+    var statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+    boolean previous = statistics.isStatisticsEnabled();
+    statistics.setStatisticsEnabled(true);
+    statistics.clear();
+    try {
+      List<StockEntry> found = entries.findByItemId(wanted.itemId());
+      assertThat(found).hasSize(2).allSatisfy(e -> assertThat(e.lines()).hasSize(2));
+      assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+    } finally {
+      statistics.setStatisticsEnabled(previous);
+    }
+  }
+
+  @Test
+  void upgradesV2WithExistingReceiptDataAndAddsTheItemLookupIndex() {
+    String schema = "upgrade_" + UUID.randomUUID().toString().replace("-", "");
+    Flyway v2 =
+        Flyway.configure()
+            .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+            .schemas(schema)
+            .defaultSchema(schema)
+            .target("2")
+            .load();
+    try {
+      assertThat(v2.migrate().migrationsExecuted).isEqualTo(2);
+      UUID item = UUID.randomUUID();
+      UUID entry = UUID.randomUUID();
+      jdbc.update(
+          "INSERT INTO " + schema + ".items VALUES (?, 'Synthetic upgrade item', 'LITRE')", item);
+      jdbc.update(
+          "INSERT INTO " + schema + ".stock_entries VALUES (?, ?)",
+          entry,
+          java.sql.Timestamp.from(OCCURRED_AT));
+      jdbc.update(
+          "INSERT INTO " + schema + ".stock_entry_lines VALUES (?, 0, ?, 1.50, 2)", entry, item);
+      Flyway v3 =
+          Flyway.configure()
+              .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+              .schemas(schema)
+              .defaultSchema(schema)
+              .load();
+      assertThat(v3.migrate().migrationsExecuted).isEqualTo(1);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT quantity FROM " + schema + ".stock_entry_lines WHERE entry_id = ?",
+                  BigDecimal.class,
+                  entry))
+          .isEqualTo(new BigDecimal("1.50"));
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT quantity_scale FROM " + schema + ".stock_entry_lines WHERE entry_id = ?",
+                  Integer.class,
+                  entry))
+          .isEqualTo(2);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT count(*) FROM pg_indexes WHERE schemaname = ? AND indexname = 'stock_entry_lines_item_id_idx'",
+                  Long.class,
+                  schema))
+          .isEqualTo(1L);
+    } finally {
+      jdbc.execute("DROP SCHEMA " + schema + " CASCADE");
+    }
   }
 
   private static StockEntry entry(StockEntryLine... lines) {
