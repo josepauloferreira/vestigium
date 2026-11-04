@@ -3,7 +3,10 @@ package io.github.josepauloferreira.vestigium.application;
 import io.github.josepauloferreira.vestigium.domain.ItemId;
 import io.github.josepauloferreira.vestigium.domain.PhysicalUnit;
 import io.github.josepauloferreira.vestigium.domain.StockBalanceCalculator;
+import io.github.josepauloferreira.vestigium.domain.StockEntryId;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
 
 public final class ItemStockQueries {
   private final ItemRepository items;
@@ -22,4 +25,27 @@ public final class ItemStockQueries {
   }
 
   public record Balance(ItemId itemId, PhysicalUnit unit, BigDecimal quantity) {}
+
+  public History history(ItemId itemId) {
+    var item = items.findById(itemId).orElseThrow(ItemNotFoundException::new);
+    var receipts =
+        entries.findByItemId(itemId).stream()
+            .map(
+                entry ->
+                    new Receipt(
+                        entry.id(),
+                        entry.occurredAt(),
+                        entry.lines().stream()
+                            .filter(line -> itemId.equals(line.itemId()))
+                            .findFirst()
+                            .orElseThrow()
+                            .quantity()
+                            .value()))
+            .toList();
+    return new History(itemId, item.unit(), receipts);
+  }
+
+  public record History(ItemId itemId, PhysicalUnit unit, List<Receipt> entries) {}
+
+  public record Receipt(StockEntryId entryId, Instant occurredAt, BigDecimal quantity) {}
 }

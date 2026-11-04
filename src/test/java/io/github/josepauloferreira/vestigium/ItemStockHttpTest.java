@@ -6,6 +6,7 @@ import io.github.josepauloferreira.vestigium.application.ItemRepository;
 import io.github.josepauloferreira.vestigium.application.StockEntryRepository;
 import io.github.josepauloferreira.vestigium.domain.*;
 import io.github.josepauloferreira.vestigium.infrastructure.web.ItemBalanceResponse;
+import io.github.josepauloferreira.vestigium.infrastructure.web.ItemEntryHistoryResponse;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.*;
@@ -65,9 +66,10 @@ class ItemStockHttpTest {
     assertThat(balance(item).quantity()).isEqualByComparingTo("2.25");
   }
 
-  @Test
-  void returnsNotFoundForAnUnknownCatalogIdentity() throws Exception {
-    String path = "/items/" + UUID.randomUUID() + "/balance";
+  @ParameterizedTest
+  @ValueSource(strings = {"balance", "stock-entries"})
+  void returnsNotFoundForAnUnknownCatalogIdentity(String route) throws Exception {
+    String path = "/items/" + UUID.randomUUID() + "/" + route;
     assertProblem(get(path), 404, path);
   }
 
@@ -78,16 +80,75 @@ class ItemStockHttpTest {
     assertProblem(get(path), 400, path);
   }
 
-  @Test
-  void returnsSafeServerFailureWhenTheHistoryCannotBeRead() throws Exception {
+  @ParameterizedTest
+  @ValueSource(strings = {"balance", "stock-entries"})
+  void returnsSafeServerFailureWhenTheHistoryCannotBeRead(String route) throws Exception {
     ItemId item = item();
-    String path = "/items/" + item.value() + "/balance";
+    String path = "/items/" + item.value() + "/" + route;
     jdbc.execute("ALTER TABLE stock_entries RENAME TO item_stock_failure_probe");
     try {
       assertProblem(get(path), 500, path);
     } finally {
       jdbc.execute("ALTER TABLE item_stock_failure_probe RENAME TO stock_entries");
     }
+  }
+
+  @Test
+  void explainsTheBalanceWithOrderedItemSpecificReceiptSummaries() throws Exception {
+    ItemId item = item();
+    ItemId other = item();
+    Instant firstTime = Instant.parse("1969-12-31T23:59:59.999999Z");
+    Instant laterTime = Instant.parse("2100-01-01T00:00:00Z");
+    StockEntryId first = insert(firstTime, line(other, "999"), line(item, "1.50"));
+    StockEntryId second = insert(laterTime, line(item, "0.7500"));
+    insert(firstTime, line(other, "999"));
+
+    ItemEntryHistoryResponse history = history(item);
+
+    assertThat(history.itemId()).isEqualTo(item.value());
+    assertThat(history.unit()).isEqualTo(PhysicalUnit.LITRE);
+    assertThat(history.entries())
+        .containsExactly(
+            new ItemEntryHistoryResponse.Entry(
+                first.value(), firstTime.toString(), new BigDecimal("1.50")),
+            new ItemEntryHistoryResponse.Entry(
+                second.value(), laterTime.toString(), new BigDecimal("0.7500")));
+    assertThat(
+            history.entries().stream()
+                .map(ItemEntryHistoryResponse.Entry::quantity)
+                .reduce(BigDecimal.ZERO, BigDecimal::add))
+        .isEqualByComparingTo(balance(item).quantity());
+  }
+
+  @Test
+  void returnsEmptyHistoryForAKnownItemWithoutReceipts() throws Exception {
+    assertThat(history(item()).entries()).isEmpty();
+  }
+
+  @Test
+  void keepsTimestampTiesStableUsingTheDatabaseUuidOrder() throws Exception {
+    ItemId item = item();
+    Instant time = Instant.parse("2026-01-01T00:00:00Z");
+    StockEntryId low = new StockEntryId(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+    StockEntryId high = new StockEntryId(UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff"));
+    entries.insert(new StockEntry(high, time, List.of(line(item, "2"))));
+    entries.insert(new StockEntry(low, time, List.of(line(item, "1"))));
+    assertThat(history(item).entries())
+        .extracting(ItemEntryHistoryResponse.Entry::entryId)
+        .containsExactly(low.value(), high.value());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"invalid", "1-1-1-1-1"})
+  void rejectsNoncanonicalHistoryIds(String id) throws Exception {
+    String path = "/items/" + id + "/stock-entries";
+    assertProblem(get(path), 400, path);
+  }
+
+  private ItemEntryHistoryResponse history(ItemId item) throws Exception {
+    HttpResponse<String> response = get("/items/" + item.value() + "/stock-entries");
+    assertThat(response.statusCode()).isEqualTo(200);
+    return json.readValue(response.body(), ItemEntryHistoryResponse.class);
   }
 
   private ItemId item() {

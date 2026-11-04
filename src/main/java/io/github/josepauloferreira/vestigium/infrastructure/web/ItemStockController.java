@@ -35,4 +35,18 @@ public class ItemStockController {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item ID must be a canonical UUID");
     }
   }
+
+  @GetMapping("/stock-entries")
+  public ItemEntryHistoryResponse history(@PathVariable String id) {
+    var history = queries.history(parseId(id));
+    return new ItemEntryHistoryResponse(
+        history.itemId().value(),
+        history.unit(),
+        history.entries().stream()
+            .map(
+                entry ->
+                    new ItemEntryHistoryResponse.Entry(
+                        entry.entryId().value(), entry.occurredAt().toString(), entry.quantity()))
+            .toList());
+  }
 }
