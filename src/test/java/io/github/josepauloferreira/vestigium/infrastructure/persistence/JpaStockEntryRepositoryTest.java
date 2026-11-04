@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.github.josepauloferreira.vestigium.PostgresTestConfiguration;
 import io.github.josepauloferreira.vestigium.VestigiumApplication;
 import io.github.josepauloferreira.vestigium.application.DuplicateStockEntryIdException;
+import io.github.josepauloferreira.vestigium.application.InvalidStockEntryDataException;
 import io.github.josepauloferreira.vestigium.application.ItemRepository;
 import io.github.josepauloferreira.vestigium.application.StockEntryRepository;
 import io.github.josepauloferreira.vestigium.domain.Item;
@@ -164,7 +165,7 @@ class JpaStockEntryRepositoryTest {
     StockEntry entry = entry(line("1.50"), unknown);
 
     assertThatThrownBy(() -> entries.insert(entry))
-        .isInstanceOf(DataIntegrityViolationException.class)
+        .isInstanceOf(InvalidStockEntryDataException.class)
         .rootCause()
         .isInstanceOfSatisfying(
             SQLException.class, cause -> assertThat(cause.getSQLState()).isEqualTo("23503"));
@@ -264,7 +265,7 @@ class JpaStockEntryRepositoryTest {
     StockEntry entry = entry(line(quantity));
 
     assertThatThrownBy(() -> entries.insert(entry))
-        .isInstanceOf(DataIntegrityViolationException.class)
+        .isInstanceOf(InvalidStockEntryDataException.class)
         .hasMessage("Stock entry quantity exceeds PostgreSQL NUMERIC storage limits");
     assertNoStoredEntry(entry.id());
   }
@@ -289,7 +290,7 @@ class JpaStockEntryRepositoryTest {
             List.of(line("1")));
 
     assertThatThrownBy(() -> entries.insert(entry))
-        .isInstanceOf(DataIntegrityViolationException.class);
+        .isInstanceOf(InvalidStockEntryDataException.class);
     assertNoStoredEntry(entry.id());
   }
 

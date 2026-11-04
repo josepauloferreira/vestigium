@@ -1,10 +1,12 @@
 package io.github.josepauloferreira.vestigium.infrastructure.persistence;
 
 import io.github.josepauloferreira.vestigium.application.DuplicateStockEntryIdException;
+import io.github.josepauloferreira.vestigium.application.InvalidStockEntryDataException;
 import io.github.josepauloferreira.vestigium.application.StockEntryRepository;
 import io.github.josepauloferreira.vestigium.domain.StockEntry;
 import io.github.josepauloferreira.vestigium.domain.StockEntryId;
 import jakarta.persistence.EntityExistsException;
+import java.sql.SQLException;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,24 @@ public class JpaStockEntryRepository implements StockEntryRepository {
     } catch (DataIntegrityViolationException exception) {
       if (isDuplicateIdentity(exception)) {
         throw new DuplicateStockEntryIdException(entry.id(), exception);
+      }
+      for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+        if (cause instanceof ConstraintViolationException violation
+            && "23503".equals(violation.getSQLState())
+            && "stock_entry_lines_item_id_fkey".equals(violation.getConstraintName())) {
+          throw new InvalidStockEntryDataException(
+              "Every stock entry item must exist in the catalog", exception);
+        }
+        if (cause instanceof SQLException sql && "22008".equals(sql.getSQLState())) {
+          throw new InvalidStockEntryDataException(
+              "occurredAt exceeds PostgreSQL timestamp storage limits", exception);
+        }
+        if (cause instanceof ConstraintViolationException violation
+            && "23514".equals(violation.getSQLState())
+            && "stock_entries_occurred_at_check".equals(violation.getConstraintName())) {
+          throw new InvalidStockEntryDataException(
+              "occurredAt exceeds PostgreSQL timestamp storage limits", exception);
+        }
       }
       throw exception;
     }
