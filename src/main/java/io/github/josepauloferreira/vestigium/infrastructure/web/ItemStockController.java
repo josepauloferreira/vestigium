@@ -2,6 +2,8 @@ package io.github.josepauloferreira.vestigium.infrastructure.web;
 
 import io.github.josepauloferreira.vestigium.application.ItemStockQueries;
 import io.github.josepauloferreira.vestigium.domain.ItemId;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -12,12 +14,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+@Tag(name = "Item stock")
 @RestController
 @RequestMapping(value = "/items/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
 @RequiredArgsConstructor
 public class ItemStockController {
   private final ItemStockQueries queries;
 
+  @Operation(
+      operationId = "getItemBalance",
+      summary = "Calculate the entry-derived quantity",
+      description =
+          "Exact total over all recorded receipts, including future-dated entries. No automatic time cutoff. An existing item with no receipts returns zero. Other movement types are future work.")
   @GetMapping("/balance")
   public ItemBalanceResponse balance(@PathVariable String id) {
     var balance = queries.balance(parseId(id));
@@ -36,6 +44,11 @@ public class ItemStockController {
     }
   }
 
+  @Operation(
+      operationId = "getItemEntryHistory",
+      summary = "Explain an item quantity through its receipts",
+      description =
+          "All recorded receipts for this item, ordered by occurrence and database UUID order. Preserves each quantity scale. Existing items without receipts return an empty list; no pagination or date filter is applied.")
   @GetMapping("/stock-entries")
   public ItemEntryHistoryResponse history(@PathVariable String id) {
     var history = queries.history(parseId(id));

@@ -3,6 +3,8 @@ package io.github.josepauloferreira.vestigium.infrastructure.web;
 import io.github.josepauloferreira.vestigium.application.ItemRepository;
 import io.github.josepauloferreira.vestigium.domain.Item;
 import io.github.josepauloferreira.vestigium.domain.ItemId;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.UUID;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+@Tag(name = "Items")
 @RestController
 @RequestMapping(value = "/items", produces = MediaType.APPLICATION_JSON_VALUE)
 @RequiredArgsConstructor
@@ -25,6 +28,11 @@ public class ItemController {
 
   private final ItemRepository repository;
 
+  @Operation(
+      operationId = "createItem",
+      summary = "Register a catalog item",
+      description =
+          "Caller-supplied canonical UUID; preserves supported name text. Repeated IDs never overwrite an item.")
   @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<ItemResponse> create(@Valid @RequestBody CreateItemRequest request) {
     Item item = new Item(parseId(request.id()), request.name(), request.unit());
@@ -33,6 +41,7 @@ public class ItemController {
         .body(ItemResponse.from(item));
   }
 
+  @Operation(operationId = "getItem", summary = "Find a catalog item")
   @GetMapping("/{id}")
   public ItemResponse find(@PathVariable String id) {
     return repository

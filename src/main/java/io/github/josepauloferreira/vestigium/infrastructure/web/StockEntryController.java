@@ -6,6 +6,8 @@ import io.github.josepauloferreira.vestigium.domain.MovementQuantity;
 import io.github.josepauloferreira.vestigium.domain.StockEntry;
 import io.github.josepauloferreira.vestigium.domain.StockEntryId;
 import io.github.josepauloferreira.vestigium.domain.StockEntryLine;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.time.Instant;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+@Tag(name = "Stock entries")
 @RestController
 @RequestMapping(value = "/stock-entries", produces = MediaType.APPLICATION_JSON_VALUE)
 @RequiredArgsConstructor
@@ -31,6 +34,11 @@ public class StockEntryController {
 
   private final StockEntryRepository repository;
 
+  @Operation(
+      operationId = "createStockEntry",
+      summary = "Record a complete receipt",
+      description =
+          "Atomic ordered lines for existing catalog items. Quantities are exact JSON numbers. Requires an explicit offset or Z and microsecond precision; repeated items are rejected without summing.")
   @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<StockEntryResponse> create(
       @Valid @RequestBody CreateStockEntryRequest request) {
@@ -54,6 +62,7 @@ public class StockEntryController {
         .body(StockEntryResponse.from(entry));
   }
 
+  @Operation(operationId = "getStockEntry", summary = "Find a complete receipt")
   @GetMapping("/{id}")
   public StockEntryResponse find(@PathVariable String id) {
     return repository
