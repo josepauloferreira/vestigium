@@ -15,9 +15,9 @@ These rules have unit tests. A Spring Boot application exposes item and stock-en
 ## Items and physical units
 
 ```java
-import io.github.josepauloferreira.vestigium.domain.Item;
-import io.github.josepauloferreira.vestigium.domain.ItemId;
-import io.github.josepauloferreira.vestigium.domain.PhysicalUnit;
+import io.github.josepauloferreira.vestigium.domain.item.Item;
+import io.github.josepauloferreira.vestigium.domain.item.ItemId;
+import io.github.josepauloferreira.vestigium.domain.item.PhysicalUnit;
 import java.util.UUID;
 
 ItemId id = new ItemId(UUID.fromString("00000000-0000-0000-0000-000000000001"));
@@ -88,11 +88,11 @@ Requests require `id`, a nonblank `name` and a `unit` from `PAIR`, `UNIT`, `LITR
 ## Stock entries
 
 ```java
-import io.github.josepauloferreira.vestigium.domain.ItemId;
-import io.github.josepauloferreira.vestigium.domain.MovementQuantity;
-import io.github.josepauloferreira.vestigium.domain.StockEntry;
-import io.github.josepauloferreira.vestigium.domain.StockEntryId;
-import io.github.josepauloferreira.vestigium.domain.StockEntryLine;
+import io.github.josepauloferreira.vestigium.domain.item.ItemId;
+import io.github.josepauloferreira.vestigium.domain.stock.MovementQuantity;
+import io.github.josepauloferreira.vestigium.domain.stockentry.StockEntry;
+import io.github.josepauloferreira.vestigium.domain.stockentry.StockEntryId;
+import io.github.josepauloferreira.vestigium.domain.stockentry.StockEntryLine;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -178,7 +178,7 @@ Errors follow the existing safe ProblemDetail format. Nested field errors identi
 ## Movement quantity
 
 ```java
-import io.github.josepauloferreira.vestigium.domain.MovementQuantity;
+import io.github.josepauloferreira.vestigium.domain.stock.MovementQuantity;
 import java.math.BigDecimal;
 
 MovementQuantity quantity = MovementQuantity.of(new BigDecimal("0.75"));
@@ -197,7 +197,7 @@ Lombok remains configured as a compile-time tool for other suitable classes; thi
 Using `entry` and `oilId` from the stock-entry example above:
 
 ```java
-import io.github.josepauloferreira.vestigium.domain.StockBalanceCalculator;
+import io.github.josepauloferreira.vestigium.domain.balance.StockBalanceCalculator;
 
 StockEntry anotherEntry = new StockEntry(
     new StockEntryId(UUID.fromString("00000000-0000-0000-0000-000000000102")),
