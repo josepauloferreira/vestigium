@@ -12,6 +12,12 @@ The domain represents items with stable identity and a physical unit, positive f
 
 These rules have unit tests. A Spring Boot application exposes item and stock-entry registration/lookup and basic health over HTTP and runs as an executable JAR. Initial stock can be recorded once per item, including an explicitly counted zero. Balance queries derive quantities from initial stock plus persisted receipts; receipt history remains separately available. OpenAPI and Swagger UI document the business API. The item catalog and complete stock entries use Spring Data JPA and Hibernate with PostgreSQL, Flyway migrations and real-database integration tests. Entries preserve ordered lines and commit atomically. Other movement types have not been implemented. Exits, returns, adjustments and corrections remain future work, so these totals are not yet complete operational stock balances.
 
+## Code organization
+
+The top-level layers remain `domain`, `application` and `infrastructure`. Each layer groups code by module: `item`, `stockentry`, `initialstock`, `balance` and shared stock concerns. Inside infrastructure, `persistence` and `web` keep their existing roles and group files by module. Tests follow the same layout; this remains one Maven project.
+
+See [the package map and reading guide](docs/architecture.md) to follow a feature across its layers.
+
 ## Items and physical units
 
 ```java
@@ -440,7 +446,7 @@ To run the full test suite, including database and HTTP integration tests:
 To run only the domain tests without Docker:
 
 ```bash
-./mvnw -Dtest='**/domain/*Test' test
+./mvnw -Dtest='**/domain/**/*Test' test
 ```
 
 Coverage includes exact per-item entry totals, empty histories, duplicate-entry rejection, preserved inputs, stateless repeated calls, stock entry construction, duplicate-item rejection, occurrence precision, collection immutability, item identity versus descriptive attributes, required values, blank names, physical units, positive integers/fractions, preservation of scale and precision, rejection of zero/negative/missing quantities, and equality with consistent hash-based lookup. Test reports are written to `target/surefire-reports/`.
