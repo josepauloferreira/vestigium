@@ -26,9 +26,9 @@ public class ItemStockController {
 
   @Operation(
       operationId = "getItemBalance",
-      summary = "Calculate the entry-derived quantity",
+      summary = "Calculate initial stock plus receipts",
       description =
-          "Exact total over all recorded receipts, including future-dated entries. No automatic time cutoff. An existing item with no receipts returns zero. Other movement types are future work.")
+          "Exact total of optional initial stock plus all recorded receipts, including future-dated facts. No automatic time cutoff. An existing item without initial stock or receipts returns zero. Other movement types are future work.")
   @GetMapping("/balance")
   public ItemBalanceResponse balance(@PathVariable String id) {
     var balance = queries.balance(parseId(id));
@@ -49,9 +49,9 @@ public class ItemStockController {
 
   @Operation(
       operationId = "getItemEntryHistory",
-      summary = "Explain an item quantity through its receipts",
+      summary = "List an item's recorded receipts",
       description =
-          "All recorded receipts for this item, ordered by occurrence and database UUID order. Preserves each quantity scale. Existing items without receipts return an empty list; no pagination or date filter is applied.")
+          "All recorded receipts for this item, ordered by occurrence and database UUID order. Preserves each quantity scale. Existing items without receipts return an empty list; no pagination or date filter is applied. Initial stock is retrieved separately and also contributes to balance.")
   @GetMapping("/stock-entries")
   public ItemEntryHistoryResponse history(@PathVariable String id) {
     var history = queries.history(parseId(id));

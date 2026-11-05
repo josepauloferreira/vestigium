@@ -10,7 +10,7 @@ The project originates from a warehouse process where quantities are updated dir
 
 The domain represents items with stable identity and a physical unit, positive fractional movement quantities, stock entries with an explicit occurrence time and one line per item, and per-item balances derived from supplied entries. `MovementQuantity` stores a `BigDecimal` without rounding or changing its scale. Quantities such as `1.5` and `1.50` have equal numeric meaning and consistent hashes while retaining their original representation.
 
-These rules have unit tests. A Spring Boot application exposes item and stock-entry registration/lookup and basic health over HTTP and runs as an executable JAR. Item balance/history queries derive quantities from persisted receipts. OpenAPI and Swagger UI document the business API. The item catalog and complete stock entries use Spring Data JPA and Hibernate with PostgreSQL, Flyway migrations and real-database integration tests. Entries preserve ordered lines and commit atomically. Other movement types have not been implemented. Entry-derived totals are not yet complete operational stock balances.
+These rules have unit tests. A Spring Boot application exposes item and stock-entry registration/lookup and basic health over HTTP and runs as an executable JAR. Initial stock can be recorded once per item, including an explicitly counted zero. Balance queries derive quantities from initial stock plus persisted receipts; receipt history remains separately available. OpenAPI and Swagger UI document the business API. The item catalog and complete stock entries use Spring Data JPA and Hibernate with PostgreSQL, Flyway migrations and real-database integration tests. Entries preserve ordered lines and commit atomically. Other movement types have not been implemented. Exits, returns, adjustments and corrections remain future work, so these totals are not yet complete operational stock balances.
 
 ## Items and physical units
 
@@ -117,7 +117,7 @@ An entry records materials actually received after tracking begins. It differs f
 | `StockEntryLine` | Value Object record pairing a required `ItemId` with a valid positive `MovementQuantity`. |
 | `StockEntry` | Immutable entity identified by its `StockEntryId`, with a required `occurredAt` and nonempty line list. |
 
-`occurredAt` is an explicitly supplied `Instant`: when the material was received, not when a record was typed. It must be exactly representable in microseconds: `getNano() % 1_000 == 0`. More precise values throw `IllegalArgumentException`; they are never rounded or truncated. The `Z` in the example denotes UTC. Converting operator-local date/time to an instant and displaying it in a timezone belong to future input/output boundaries. Accepted instants are preserved exactly; no current-time, future-date or backdating rule is imposed.
+`occurredAt` is an explicitly supplied `Instant`: when the material was received, not when a record was typed. It must be exactly representable in microseconds: `getNano() % 1_000 == 0`. More precise values throw `IllegalArgumentException`; they are never rounded or truncated. The `Z` in the example denotes UTC. Converting operator-local date/time to an instant and displaying it in a timezone belong to future input/output boundaries. Accepted instants are preserved exactly; no current-time or future-date cutoff is imposed by the receipt constructor. Persisted receipts must not precede an established initial stock for any referenced item.
 
 Each item may occur only once within an entry. Duplicate `ItemId` values throw `IllegalArgumentException`, even when wrapped by different objects or paired with different quantities. The caller supplies the intended total; entries never silently combine or round lines. The same item may appear in separate entries.
 
@@ -163,7 +163,7 @@ curl --include --header 'Accept: application/json' \
 
 Expect `200 OK` with the complete stored receipt, including after application restart. Decimal quantities bind directly to `BigDecimal` and retain their numeric value and scale; use JSON numbers, not quoted numeric strings. A consuming client must also avoid converting exact decimals through floating point if it needs that precision.
 
-Supply `occurredAt` as an ISO 8601 date/time with `Z` or an explicit offset, such as `2026-11-03T11:30:00.123456-03:00`. The response expresses the same instant in UTC. Date-only and timezone-free input are rejected. The existing microsecond precision rule applies without rounding/truncation; no future-date or backdating restriction is added.
+Supply `occurredAt` as an ISO 8601 date/time with `Z` or an explicit offset, such as `2026-11-03T11:30:00.123456-03:00`. The response expresses the same instant in UTC. Date-only and timezone-free input are rejected. The existing microsecond precision rule applies without rounding/truncation; no automatic future-date cutoff is applied. A receipt earlier than an established initial stock for any referenced item returns 409 without writing the receipt.
 
 | Result | Meaning |
 | --- | --- |
@@ -215,7 +215,7 @@ An empty history or a history without the requested item returns numeric zero. T
 
 The complete history must contain each `StockEntryId` at most once. Repeated identities throw `IllegalArgumentException`, even when their contents differ or they contain no matching item. Different entry identifiers represent different receipts and both contribute, even with identical contents. Missing item identity, history or an entry element throws `NullPointerException`. This input validation does not implement global storage uniqueness or HTTP idempotency.
 
-Every supplied entry participates regardless of `occurredAt`. This is a total over explicit input, without an implicit current-time cutoff or historical-period query. `INITIAL_STOCK`, exits, returns and adjustments remain future increments, as do negative-stock and chronology policies.
+Every supplied entry participates regardless of `occurredAt`. This is a total over explicit input, without an implicit current-time cutoff or historical-period query. The overload accepting InitialStock adds its quantity, checks item identity and rejects matching receipts before its occurrence. Exits, returns, adjustments and negative-stock policy remain future work.
 
 The first matching quantity is used directly before adding subsequent quantities. This avoids an unnecessary zero addition that cannot align every valid extreme `BigDecimal` scale; a regression test covers the minimum supported scale.
 
@@ -253,11 +253,31 @@ curl --include http://127.0.0.1:8080/items/00000000-0000-0000-0000-000000000201/
 
 Expect `200 OK` with `itemId`, `unit` and an `entries` array. Each entry contains `entryId`, UTC `occurredAt` and this item's exact `quantity`. The example yields 1.50 and 0.75 in occurrence order. Equal timestamps are ordered by the database UUID order. The existing `GET /stock-entries/{id}` returns the complete multi-item receipt.
 
-A known item without receipts has numeric zero and an empty history; an unknown catalog identity returns 404, and an invalid UUID returns 400. Unexpected persistence failures retain the safe 500 ProblemDetail response.
+A known item without initial stock or receipts has numeric zero and an empty receipt history; an unknown catalog identity returns 404, and an invalid UUID returns 400. Unexpected persistence failures retain the safe 500 ProblemDetail response.
 
-All recorded occurrence times participate, including future-dated entries; the queries apply no automatic current-time cutoff. History returns all receipts for the selected item, without pagination/date filters or truncation. The quantity is the exact total of recorded receipts; INITIAL_STOCK, exits, returns and adjustments remain future work. The result does not establish a physical count. BigDecimal arithmetic has no fixed display scale, and individual history quantities retain their original scale.
+All recorded occurrence times participate, including future-dated entries; the queries apply no automatic current-time cutoff. History returns all receipts for the selected item, without pagination/date filters or truncation. The quantity is the exact total of any initial stock plus recorded receipts; exits, returns and adjustments remain future work. Receipt history excludes the initial-stock fact, which has its own lookup. The result does not establish a physical count. BigDecimal arithmetic has no fixed display scale, and individual history quantities retain their original scale.
 
 The application coordinates catalog lookup, a JPA query for matching complete receipts and StockBalanceCalculator. It fetches their line collections together, preserving complete aggregates and avoiding a collection query for every receipt. Flyway V3 adds `stock_entry_lines_item_id_idx` for the new item-filtered access path; V1/V2 remain unchanged. This index has storage/write cost; no measured speedup is asserted. Query plans depend on data and PostgreSQL's planner.
+
+## Initial stock
+
+An item's opening is a known starting quantity, recorded at most once. `InitialStockQuantity` is a nonnegative decimal Value Object; its record equality/hash use numeric meaning while preserving scale. `MovementQuantity` stays strictly positive. A missing opening and a recorded zero are different facts.
+
+After the receipt examples above, establish the synthetic item's initial 50.00 L before those receipts:
+
+```bash
+curl --include --header 'Content-Type: application/json' \
+  --data '{"quantity":50.00,"occurredAt":"2026-11-03T08:00:00Z"}' \
+  http://127.0.0.1:8080/items/00000000-0000-0000-0000-000000000201/initial-stock
+```
+
+Expect 201 and a Location for the same `/initial-stock` resource. GET that address returns itemId, unit, quantity and UTC occurredAt. Its quantity retains 50.00; the balance now includes this opening plus the earlier receipt examples (52.25 L after receipts of 1.50 and 0.75). A repeated POST returns 409 without overwriting the original, even when identical. A known item without an opening returns 404 with `Initial stock has not been recorded for this item`; an absent catalog item returns 404 with `Item was not found`. An explicit 0.0000 is accepted and remains retrievable as a recorded zero.
+
+The opening occurs immediately before receipts at the same timestamp. It may be entered after receipts have already been saved, provided its occurrence precedes or equals their earliest occurrence. Opening after an existing receipt or inserting a receipt before an existing opening returns 409. Negative quantities, quoted numbers, invalid UUIDs and invalid offset/microsecond dates return 400; identified unsupported exact storage values return 422; unexpected persistence failures return a generic 500. No automatic future-date cutoff is added.
+
+V4 creates a separate initial_stock table with a per-item primary/foreign key and database checks for nonnegative finite quantity and finite timestamp. Original scale is stored separately. Existing migrations and receipts remain unchanged. Both supported write paths lock referenced catalog rows in database UUID order inside their transaction, then validate chronology before saving. Unknown receipt references are rejected by that locking lookup; PostgreSQL foreign keys remain independently enforced. Direct SQL bypasses application chronology coordination; future import/write paths must use the same protocol. A conflicting multi-item receipt leaves no partial data.
+
+Balance and receipt-history HTTP queries use a read-only repeatable-read transaction so catalog, receipts and opening come from one snapshot. Real HTTP tests hold a table lock, commit an opening/receipt concurrently and verify a complete old result followed by the complete new result. Write-race tests observe actual PostgreSQL lock waits, rather than assuming a timed delay proves contention.
 
 ## OpenAPI and Swagger UI
 

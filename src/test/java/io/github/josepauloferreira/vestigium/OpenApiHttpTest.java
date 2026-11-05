@@ -34,18 +34,26 @@ class OpenApiHttpTest {
             "/stock-entries",
             "/stock-entries/{id}",
             "/items/{id}/balance",
-            "/items/{id}/stock-entries");
+            "/items/{id}/stock-entries",
+            "/items/{id}/initial-stock");
     assertThat(spec.<Map<String, Object>>read("$.paths['/items'].post.responses"))
         .containsOnlyKeys("201", "400", "409", "500");
     assertThat(spec.<Map<String, Object>>read("$.paths['/stock-entries'].post.responses"))
         .containsOnlyKeys("201", "400", "409", "422", "500");
     for (String path :
         new String[] {
-          "/items/{id}", "/stock-entries/{id}", "/items/{id}/balance", "/items/{id}/stock-entries"
+          "/items/{id}",
+          "/stock-entries/{id}",
+          "/items/{id}/balance",
+          "/items/{id}/stock-entries",
+          "/items/{id}/initial-stock"
         }) {
       assertThat(spec.<Map<String, Object>>read("$.paths['" + path + "'].get.responses"))
           .containsOnlyKeys("200", "400", "404", "500");
     }
+    assertThat(
+            spec.<Map<String, Object>>read("$.paths['/items/{id}/initial-stock'].post.responses"))
+        .containsOnlyKeys("201", "400", "404", "409", "422", "500");
     assertThat(
             spec.<String>read(
                 "$.paths['/stock-entries'].post.responses['422'].content['application/problem+json'].schema['$ref']"))
@@ -85,6 +93,24 @@ class OpenApiHttpTest {
             spec.<String>read(
                 "$.components.schemas.CreateStockEntryRequest.properties.occurredAt.description"))
         .contains("microseconds", "explicit offset");
+    assertThat(
+            spec.<java.util.List<String>>read(
+                "$.components.schemas.CreateInitialStockRequest.required"))
+        .containsExactlyInAnyOrder("quantity", "occurredAt");
+    assertThat(
+            spec.<Map<String, Object>>read(
+                "$.components.schemas.CreateInitialStockRequest.properties.quantity"))
+        .containsEntry("type", "number")
+        .doesNotContainKey("format");
+    assertThat(
+            spec.<Number>read(
+                    "$.components.schemas.CreateInitialStockRequest.properties.quantity.minimum")
+                .intValue())
+        .isZero();
+    assertThat(spec.<String>read("$.paths['/items/{id}/initial-stock'].post.description"))
+        .contains("explicit zero", "Cannot follow existing receipts");
+    assertThat(spec.<String>read("$.paths['/items/{id}/balance'].get.description"))
+        .contains("initial stock");
     assertThat(spec.<String>read("$.paths['/items/{id}/balance'].get.description"))
         .contains("future-dated", "No automatic time cutoff");
   }

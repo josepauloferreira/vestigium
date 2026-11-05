@@ -38,7 +38,7 @@ public class StockEntryController {
       operationId = "createStockEntry",
       summary = "Record a complete receipt",
       description =
-          "Atomic ordered lines for existing catalog items. Quantities are exact JSON numbers. Requires an explicit offset or Z and microsecond precision; repeated items are rejected without summing.")
+          "Atomic ordered lines for existing catalog items. Quantities are exact JSON numbers. Requires an explicit offset or Z and microsecond precision; repeated items are rejected without summing. Occurrence cannot precede any referenced item's established initial stock.")
   @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<StockEntryResponse> create(
       @Valid @RequestBody CreateStockEntryRequest request) {

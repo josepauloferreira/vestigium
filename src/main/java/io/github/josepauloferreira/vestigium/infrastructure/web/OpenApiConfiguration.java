@@ -20,7 +20,7 @@ class OpenApiConfiguration {
                 .title("Vestigium API")
                 .version("0.0.1-SNAPSHOT")
                 .description(
-                    "Records catalog items and complete material receipts. Quantities and receipt history are derived from recorded entries; other movement types are future work. Example data is synthetic."));
+                    "Records catalog items and complete material receipts. Quantities derive from optional initial stock plus recorded receipts. Initial stock and receipt history are independently retrievable; exits, returns and adjustments are future work. Example data is synthetic."));
   }
 
   @Bean
@@ -70,7 +70,9 @@ class OpenApiConfiguration {
                                     "Unexpected persistence failure; diagnostics are not exposed"));
                             if (method == io.swagger.v3.oas.models.PathItem.HttpMethod.GET) {
                               responses.addApiResponse(
-                                  "404", error("Catalog item or receipt does not exist"));
+                                  "404",
+                                  error(
+                                      "Catalog item, receipt or recorded initial stock does not exist"));
                             } else if (method
                                 == io.swagger.v3.oas.models.PathItem.HttpMethod.POST) {
                               var created = responses.remove("200");
@@ -89,7 +91,16 @@ class OpenApiConfiguration {
                               responses.addApiResponse("201", created);
                               responses.addApiResponse(
                                   "409",
-                                  error("Identity already exists; original facts are preserved"));
+                                  error(
+                                      "Identity already exists or receipt chronology conflicts with initial stock; original facts are preserved"));
+                              if (path.endsWith("/initial-stock")) {
+                                responses.addApiResponse(
+                                    "404", error("Catalog item does not exist"));
+                                responses.addApiResponse(
+                                    "422",
+                                    error(
+                                        "Initial quantity or occurrence exceeds supported exact storage limits"));
+                              }
                               if (path.equals("/stock-entries")) {
                                 responses.addApiResponse(
                                     "422",
@@ -98,6 +109,15 @@ class OpenApiConfiguration {
                               }
                             }
                           }));
+      property(api, "CreateInitialStockRequest", "quantity")
+          .setDescription(
+              "Nonnegative exact decimal JSON number, including zero. Quoted numbers are rejected. Preserves original scale without rounding.");
+      property(api, "CreateInitialStockRequest", "quantity")
+          .setExample(new java.math.BigDecimal("50.00"));
+      property(api, "CreateInitialStockRequest", "occurredAt")
+          .setDescription(
+              "ISO 8601 date/time with Z or explicit offset, exactly representable in microseconds. Must precede or equal all this item's receipts; receipts at the same instant follow the opening.");
+      property(api, "CreateInitialStockRequest", "occurredAt").setExample("2026-11-03T08:00:00Z");
       // Java's code-point regex is not valid JSON Schema/ECMAScript syntax.
       var name = property(api, "CreateItemRequest", "name");
       name.setPattern(null);
@@ -114,7 +134,7 @@ class OpenApiConfiguration {
           .setExample("00000000-0000-0000-0000-000000000301");
       property(api, "CreateStockEntryRequest", "occurredAt")
           .setDescription(
-              "ISO 8601 date/time with Z or an explicit offset, exactly representable in microseconds. Returned as a UTC instant; no automatic future/backdating restriction.");
+              "ISO 8601 date/time with Z or an explicit offset, exactly representable in microseconds. Returned as a UTC instant; no automatic future cutoff. A receipt cannot precede established initial stock for any referenced item.");
       property(api, "CreateStockEntryRequest", "occurredAt")
           .setExample("2026-11-03T14:30:00.123456Z");
       property(api, "StockEntryRequestLine", "itemId")
