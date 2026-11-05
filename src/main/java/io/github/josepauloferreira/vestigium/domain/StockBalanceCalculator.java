@@ -7,6 +7,23 @@ import java.util.Objects;
 import java.util.Set;
 
 public final class StockBalanceCalculator {
+  public BigDecimal calculate(ItemId itemId, InitialStock initialStock, List<StockEntry> entries) {
+    Objects.requireNonNull(initialStock, "Initial stock is required");
+    if (!initialStock.itemId().equals(itemId)) {
+      throw new IllegalArgumentException("Initial stock must belong to the requested item");
+    }
+    BigDecimal received = calculate(itemId, entries);
+    for (StockEntry entry : entries) {
+      if (entry.lines().stream().anyMatch(line -> itemId.equals(line.itemId()))
+          && !initialStock.precedesOrEquals(entry.occurredAt())) {
+        throw new IllegalArgumentException("Receipt cannot precede initial stock");
+      }
+    }
+    BigDecimal opening = initialStock.quantity().value();
+    if (received.signum() == 0) return opening;
+    return opening.signum() == 0 ? received : opening.add(received);
+  }
+
   public BigDecimal calculate(ItemId itemId, List<StockEntry> entries) {
     Objects.requireNonNull(itemId, "Item ID is required");
     Objects.requireNonNull(entries, "Stock entries are required");
