@@ -333,11 +333,11 @@ class JpaStockEntryRepositoryTest {
               .schemas(schema)
               .defaultSchema(schema)
               .load();
-      assertThat(latest.migrate().migrationsExecuted).isEqualTo(2);
+      assertThat(latest.migrate().migrationsExecuted).isEqualTo(3);
       assertThat(latest.info().applied())
           .filteredOn(info -> info.getVersion() != null)
           .extracting(info -> info.getVersion().toString())
-          .containsExactly("1", "2", "3");
+          .containsExactly("1", "2", "3", "4");
       assertThat(latest.migrate().migrationsExecuted).isZero();
       assertThat(
               jdbc.queryForMap("SELECT id, name, unit FROM " + schema + ".items WHERE id = ?", id))
@@ -448,6 +448,7 @@ class JpaStockEntryRepositoryTest {
           "INSERT INTO " + schema + ".stock_entry_lines VALUES (?, 0, ?, 1.50, 2)", entry, item);
       Flyway v3 =
           Flyway.configure()
+              .target("3")
               .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
               .schemas(schema)
               .defaultSchema(schema)

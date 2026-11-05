@@ -174,7 +174,7 @@ class JpaItemRepositoryTest {
   void appliesTheVersionedSchemaWithoutReapplyingIt() {
     assertThat(flyway.info().applied())
         .extracting(info -> info.getVersion().toString())
-        .containsExactly("1", "2", "3");
+        .containsExactly("1", "2", "3", "4");
     assertThat(flyway.migrate().migrationsExecuted).isZero();
   }
 
