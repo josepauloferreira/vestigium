@@ -1,9 +1,13 @@
 package io.github.josepauloferreira.vestigium.infrastructure.web;
 
+import io.github.josepauloferreira.vestigium.application.DuplicateInitialStockException;
 import io.github.josepauloferreira.vestigium.application.DuplicateItemIdException;
 import io.github.josepauloferreira.vestigium.application.DuplicateStockEntryIdException;
+import io.github.josepauloferreira.vestigium.application.InitialStockNotFoundException;
+import io.github.josepauloferreira.vestigium.application.InvalidInitialStockDataException;
 import io.github.josepauloferreira.vestigium.application.InvalidStockEntryDataException;
 import io.github.josepauloferreira.vestigium.application.ItemNotFoundException;
+import io.github.josepauloferreira.vestigium.application.StockChronologyConflictException;
 import java.util.Comparator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
@@ -22,6 +26,22 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 @Slf4j
 @RestControllerAdvice
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
+
+  @ExceptionHandler(InitialStockNotFoundException.class)
+  ProblemDetail missingInitialStock(InitialStockNotFoundException exception) {
+    return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+  }
+
+  @ExceptionHandler({DuplicateInitialStockException.class, StockChronologyConflictException.class})
+  ProblemDetail initialStockConflict(RuntimeException exception) {
+    return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+  }
+
+  @ExceptionHandler(InvalidInitialStockDataException.class)
+  ProblemDetail invalidInitialStock(InvalidInitialStockDataException exception) {
+    return ProblemDetail.forStatusAndDetail(
+        HttpStatus.UNPROCESSABLE_CONTENT, exception.getMessage());
+  }
 
   @ExceptionHandler(DuplicateItemIdException.class)
   ProblemDetail duplicateItem(DuplicateItemIdException exception) {

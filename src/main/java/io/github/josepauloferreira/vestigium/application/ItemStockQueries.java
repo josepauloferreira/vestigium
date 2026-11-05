@@ -11,17 +11,25 @@ import java.util.List;
 public final class ItemStockQueries {
   private final ItemRepository items;
   private final StockEntryRepository entries;
+  private final InitialStockRepository initialStocks;
 
-  public ItemStockQueries(ItemRepository items, StockEntryRepository entries) {
+  public ItemStockQueries(
+      ItemRepository items, StockEntryRepository entries, InitialStockRepository initialStocks) {
     this.items = items;
     this.entries = entries;
+    this.initialStocks = initialStocks;
   }
 
   public Balance balance(ItemId itemId) {
     var item = items.findById(itemId).orElseThrow(ItemNotFoundException::new);
     var history = entries.findByItemId(itemId);
-    return new Balance(
-        itemId, item.unit(), new StockBalanceCalculator().calculate(itemId, history));
+    var calculator = new StockBalanceCalculator();
+    var quantity =
+        initialStocks
+            .findByItemId(itemId)
+            .map(initial -> calculator.calculate(itemId, initial, history))
+            .orElseGet(() -> calculator.calculate(itemId, history));
+    return new Balance(itemId, item.unit(), quantity);
   }
 
   public record Balance(ItemId itemId, PhysicalUnit unit, BigDecimal quantity) {}
