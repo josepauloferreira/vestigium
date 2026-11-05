@@ -3,13 +3,13 @@ package io.github.josepauloferreira.vestigium.infrastructure.web.initialstock;
 import io.github.josepauloferreira.vestigium.application.initialstock.InitialStockOperations;
 import io.github.josepauloferreira.vestigium.domain.initialstock.InitialStockQuantity;
 import io.github.josepauloferreira.vestigium.domain.item.ItemId;
+import io.github.josepauloferreira.vestigium.infrastructure.web.shared.CanonicalUuid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
@@ -58,13 +58,6 @@ public class InitialStockController {
   }
 
   private static ItemId parseId(String value) {
-    try {
-      UUID id = UUID.fromString(value);
-      if (!id.toString().equalsIgnoreCase(value))
-        throw new IllegalArgumentException("Noncanonical UUID");
-      return new ItemId(id);
-    } catch (IllegalArgumentException exception) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item ID must be a canonical UUID");
-    }
+    return new ItemId(CanonicalUuid.parse(value, "Item ID"));
   }
 }

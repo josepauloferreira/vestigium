@@ -2,11 +2,10 @@ package io.github.josepauloferreira.vestigium.infrastructure.web.balance;
 
 import io.github.josepauloferreira.vestigium.application.balance.ItemStockQueries;
 import io.github.josepauloferreira.vestigium.domain.item.ItemId;
+import io.github.josepauloferreira.vestigium.infrastructure.web.shared.CanonicalUuid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,7 +13,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @Tag(name = "Item stock")
 @RestController
@@ -36,15 +34,7 @@ public class ItemStockController {
   }
 
   private static ItemId parseId(String value) {
-    try {
-      UUID id = UUID.fromString(value);
-      if (!id.toString().equalsIgnoreCase(value)) {
-        throw new IllegalArgumentException("Noncanonical UUID");
-      }
-      return new ItemId(id);
-    } catch (IllegalArgumentException exception) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item ID must be a canonical UUID");
-    }
+    return new ItemId(CanonicalUuid.parse(value, "Item ID"));
   }
 
   @Operation(

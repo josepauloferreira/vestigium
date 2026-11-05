@@ -1,6 +1,5 @@
 package io.github.josepauloferreira.vestigium.infrastructure.web.shared;
 
-import io.github.josepauloferreira.vestigium.infrastructure.web.stockentry.CreateStockEntryRequest;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.headers.Header;
 import io.swagger.v3.oas.models.info.Info;
@@ -60,7 +59,7 @@ class OpenApiConfiguration {
                                           parameter.setSchema(
                                               new StringSchema()
                                                   .format("uuid")
-                                                  .pattern(CreateStockEntryRequest.UUID_PATTERN)));
+                                                  .pattern(CanonicalUuid.PATTERN)));
                             }
                             var responses = operation.getResponses();
                             responses.addApiResponse(
@@ -127,7 +126,7 @@ class OpenApiConfiguration {
       name.setExample("Synthetic hydraulic oil");
       for (String component : List.of("CreateItemRequest", "CreateStockEntryRequest")) {
         property(api, component, "id").setFormat("uuid");
-        property(api, component, "id").setPattern(CreateStockEntryRequest.UUID_PATTERN);
+        property(api, component, "id").setPattern(CanonicalUuid.PATTERN);
       }
       property(api, "StockEntryRequestLine", "itemId").setFormat("uuid");
       property(api, "CreateItemRequest", "id").setExample("00000000-0000-0000-0000-000000000201");

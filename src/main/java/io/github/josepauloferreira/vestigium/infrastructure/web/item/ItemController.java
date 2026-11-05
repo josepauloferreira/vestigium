@@ -3,11 +3,11 @@ package io.github.josepauloferreira.vestigium.infrastructure.web.item;
 import io.github.josepauloferreira.vestigium.application.item.ItemRepository;
 import io.github.josepauloferreira.vestigium.domain.item.Item;
 import io.github.josepauloferreira.vestigium.domain.item.ItemId;
+import io.github.josepauloferreira.vestigium.infrastructure.web.shared.CanonicalUuid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -51,14 +51,6 @@ public class ItemController {
   }
 
   private static ItemId parseId(String value) {
-    try {
-      UUID id = UUID.fromString(value);
-      if (!id.toString().equalsIgnoreCase(value)) {
-        throw new IllegalArgumentException("Noncanonical UUID");
-      }
-      return new ItemId(id);
-    } catch (IllegalArgumentException exception) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item ID must be a canonical UUID");
-    }
+    return new ItemId(CanonicalUuid.parse(value, "Item ID"));
   }
 }

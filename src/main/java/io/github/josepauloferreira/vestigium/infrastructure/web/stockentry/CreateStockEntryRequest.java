@@ -1,5 +1,6 @@
 package io.github.josepauloferreira.vestigium.infrastructure.web.stockentry;
 
+import io.github.josepauloferreira.vestigium.infrastructure.web.shared.CanonicalUuid;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -12,19 +13,16 @@ import java.util.List;
 
 public record CreateStockEntryRequest(
     @NotNull(message = "id is required")
-        @Pattern(regexp = UUID_PATTERN, message = "id must be a canonical UUID")
+        @Pattern(regexp = CanonicalUuid.PATTERN, message = "id must be a canonical UUID")
         String id,
     @NotBlank(message = "occurredAt is required") String occurredAt,
     @NotEmpty(message = "lines must contain at least one line")
         List<@NotNull(message = "line is required") @Valid Line> lines) {
 
-  public static final String UUID_PATTERN =
-      "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
-
   @Schema(name = "StockEntryRequestLine")
   public record Line(
       @NotNull(message = "itemId is required")
-          @Pattern(regexp = UUID_PATTERN, message = "itemId must be a canonical UUID")
+          @Pattern(regexp = CanonicalUuid.PATTERN, message = "itemId must be a canonical UUID")
           String itemId,
       @NotNull(message = "quantity is required")
           @DecimalMin(

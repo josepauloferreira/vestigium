@@ -6,6 +6,7 @@ import io.github.josepauloferreira.vestigium.domain.stock.MovementQuantity;
 import io.github.josepauloferreira.vestigium.domain.stockentry.StockEntry;
 import io.github.josepauloferreira.vestigium.domain.stockentry.StockEntryId;
 import io.github.josepauloferreira.vestigium.domain.stockentry.StockEntryLine;
+import io.github.josepauloferreira.vestigium.infrastructure.web.shared.CanonicalUuid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -83,15 +84,6 @@ public class StockEntryController {
   }
 
   private static StockEntryId parseId(String value) {
-    try {
-      UUID id = UUID.fromString(value);
-      if (!id.toString().equalsIgnoreCase(value)) {
-        throw new IllegalArgumentException("Noncanonical UUID");
-      }
-      return new StockEntryId(id);
-    } catch (IllegalArgumentException exception) {
-      throw new ResponseStatusException(
-          HttpStatus.BAD_REQUEST, "Stock entry ID must be a canonical UUID");
-    }
+    return new StockEntryId(CanonicalUuid.parse(value, "Stock entry ID"));
   }
 }
