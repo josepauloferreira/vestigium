@@ -23,12 +23,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class JpaStockEntryRepository implements StockEntryRepository {
 
   private final SpringDataStockEntryRepository repository;
+  private final StockTrackingGuard tracking;
 
   @Override
   @Transactional
   public void insert(StockEntry entry) {
     Objects.requireNonNull(entry, "Stock entry is required");
     try {
+      tracking.beforeReceipt(entry);
       repository.saveAndFlush(new StockEntryEntity(entry));
     } catch (DataIntegrityViolationException exception) {
       if (isDuplicateIdentity(exception)) {

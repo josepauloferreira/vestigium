@@ -169,9 +169,25 @@ class JpaStockEntryRepositoryTest {
 
     assertThatThrownBy(() -> entries.insert(entry))
         .isInstanceOf(InvalidStockEntryDataException.class)
-        .rootCause()
-        .isInstanceOfSatisfying(
-            SQLException.class, cause -> assertThat(cause.getSQLState()).isEqualTo("23503"));
+        .hasMessage("Every stock entry item must exist in the catalog");
+    jdbc.update(
+        "INSERT INTO stock_entries VALUES (?,?)",
+        entry.id().value(),
+        java.sql.Timestamp.from(OCCURRED_AT));
+    try {
+      assertThatThrownBy(
+              () ->
+                  jdbc.update(
+                      "INSERT INTO stock_entry_lines VALUES (?,0,?,1,0)",
+                      entry.id().value(),
+                      unknown.itemId().value()))
+          .isInstanceOf(DataIntegrityViolationException.class)
+          .rootCause()
+          .isInstanceOfSatisfying(
+              SQLException.class, cause -> assertThat(cause.getSQLState()).isEqualTo("23503"));
+    } finally {
+      jdbc.update("DELETE FROM stock_entries WHERE id=?", entry.id().value());
+    }
 
     assertNoStoredEntry(entry.id());
   }

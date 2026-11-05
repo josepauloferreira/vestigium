@@ -16,11 +16,13 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class JpaInitialStockRepository implements InitialStockRepository {
   private final SpringDataInitialStockRepository repository;
+  private final StockTrackingGuard tracking;
 
   @Override
   @Transactional
   public void insert(InitialStock stock) {
     Objects.requireNonNull(stock, "Initial stock is required");
+    tracking.beforeOpening(stock);
     try {
       repository.saveAndFlush(new InitialStockEntity(stock));
     } catch (DataIntegrityViolationException exception) {
