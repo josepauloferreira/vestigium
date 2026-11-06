@@ -7,6 +7,7 @@ import io.github.josepauloferreira.vestigium.application.stockentry.StockEntryRe
 import io.github.josepauloferreira.vestigium.domain.balance.StockBalanceCalculator;
 import io.github.josepauloferreira.vestigium.domain.item.ItemId;
 import io.github.josepauloferreira.vestigium.domain.item.PhysicalUnit;
+import io.github.josepauloferreira.vestigium.domain.stockentry.StockEntry;
 import io.github.josepauloferreira.vestigium.domain.stockentry.StockEntryId;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -36,26 +37,23 @@ public final class ItemStockQueries {
     return new Balance(itemId, item.unit(), quantity);
   }
 
-  public record Balance(ItemId itemId, PhysicalUnit unit, BigDecimal quantity) {}
-
   public History history(ItemId itemId) {
     var item = items.findById(itemId).orElseThrow(ItemNotFoundException::new);
     var receipts =
-        entries.findByItemId(itemId).stream()
-            .map(
-                entry ->
-                    new Receipt(
-                        entry.id(),
-                        entry.occurredAt(),
-                        entry.lines().stream()
-                            .filter(line -> itemId.equals(line.itemId()))
-                            .findFirst()
-                            .orElseThrow()
-                            .quantity()
-                            .value()))
-            .toList();
+        entries.findByItemId(itemId).stream().map(entry -> receiptFor(itemId, entry)).toList();
     return new History(itemId, item.unit(), receipts);
   }
+
+  private static Receipt receiptFor(ItemId itemId, StockEntry entry) {
+    var line =
+        entry.lines().stream()
+            .filter(candidate -> itemId.equals(candidate.itemId()))
+            .findFirst()
+            .orElseThrow();
+    return new Receipt(entry.id(), entry.occurredAt(), line.quantity().value());
+  }
+
+  public record Balance(ItemId itemId, PhysicalUnit unit, BigDecimal quantity) {}
 
   public record History(ItemId itemId, PhysicalUnit unit, List<Receipt> entries) {}
 
