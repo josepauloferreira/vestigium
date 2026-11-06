@@ -31,25 +31,7 @@ public class JpaInitialStockRepository implements InitialStockRepository {
     try {
       repository.saveAndFlush(new InitialStockEntity(stock));
     } catch (DataIntegrityViolationException exception) {
-      for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
-        if (cause instanceof EntityExistsException) throw new DuplicateInitialStockException();
-        if (cause instanceof ConstraintViolationException violation) {
-          if ("23505".equals(violation.getSQLState())
-              && "initial_stock_pkey".equals(violation.getConstraintName()))
-            throw new DuplicateInitialStockException();
-          if ("23503".equals(violation.getSQLState())
-              && "initial_stock_item_id_fkey".equals(violation.getConstraintName()))
-            throw new ItemNotFoundException();
-          if ("23514".equals(violation.getSQLState())
-              && "initial_stock_occurred_at_check".equals(violation.getConstraintName()))
-            throw new InvalidInitialStockDataException(
-                "occurredAt exceeds PostgreSQL timestamp storage limits", exception);
-        }
-        if (cause instanceof SQLException sql && "22008".equals(sql.getSQLState()))
-          throw new InvalidInitialStockDataException(
-              "occurredAt exceeds PostgreSQL timestamp storage limits", exception);
-      }
-      throw exception;
+      throw translateWriteFailure(exception);
     }
   }
 
@@ -58,5 +40,33 @@ public class JpaInitialStockRepository implements InitialStockRepository {
   public Optional<InitialStock> findByItemId(ItemId itemId) {
     Objects.requireNonNull(itemId, "Item ID is required");
     return repository.findById(itemId.value()).map(InitialStockEntity::toDomain);
+  }
+
+  private static RuntimeException translateWriteFailure(DataIntegrityViolationException exception) {
+    for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+      if (cause instanceof EntityExistsException) {
+        return new DuplicateInitialStockException();
+      }
+      if (cause instanceof ConstraintViolationException violation) {
+        if ("23505".equals(violation.getSQLState())
+            && "initial_stock_pkey".equals(violation.getConstraintName())) {
+          return new DuplicateInitialStockException();
+        }
+        if ("23503".equals(violation.getSQLState())
+            && "initial_stock_item_id_fkey".equals(violation.getConstraintName())) {
+          return new ItemNotFoundException();
+        }
+        if ("23514".equals(violation.getSQLState())
+            && "initial_stock_occurred_at_check".equals(violation.getConstraintName())) {
+          return new InvalidInitialStockDataException(
+              "occurredAt exceeds PostgreSQL timestamp storage limits", exception);
+        }
+      }
+      if (cause instanceof SQLException sql && "22008".equals(sql.getSQLState())) {
+        return new InvalidInitialStockDataException(
+            "occurredAt exceeds PostgreSQL timestamp storage limits", exception);
+      }
+    }
+    return exception;
   }
 }

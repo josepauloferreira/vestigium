@@ -60,11 +60,17 @@ For POST /stock-entries, read these files in order:
 5. infrastructure/persistence/stock/StockTrackingGuard.java coordinates catalog row locks and initial-stock chronology before writing.
 6. StockEntryEntity.java and StockEntryLineValue.java in the stockentry persistence package map the complete ordered facts to PostgreSQL.
 
+StockTrackingGuard keeps the write sequence visible: lock catalog items, verify existence and check chronology. Its private query methods preserve the shared database UUID lock order. Repository insert methods delegate known integrity-error translation to private methods; unexpected constraints retain their original persistence failure and roll back the write.
+
 For a balance, start with infrastructure/web/balance/ItemStockController.java, then application/balance/ItemStockQueries.java and domain/balance/StockBalanceCalculator.java. The HTTP read transaction retrieves catalog context, receipts and opening from one consistent snapshot.
+
+ItemStockQueries selects each requested item's receipt quantity through a named mapping method. Balance and history response records own the conversion to HTTP representations, following the other response records; controllers delegate to those factories.
 
 ## Shared HTTP conventions and tests
 
 CanonicalUuid centralizes the format used by controllers, receipt field validation and OpenAPI. Domain IDs still wrap UUID values and have no HTTP dependency. OpenApiConfiguration separates error schemas, route parameters, responses and request schemas into named methods so each concern can be read separately.
+
+OccurrenceTime shares explicit-offset date/time parsing between receipt and initial-stock controllers. It converts an accepted offset to an Instant; microsecond precision remains validated by the existing request/domain paths. This HTTP helper does not impose persistence range limits or a current-time cutoff.
 
 Tests mirror the layer/module packages under src/test/java. Domain tests cover business rules; web tests exercise actual HTTP/PostgreSQL; persistence tests cover mapping, migrations, atomic writes and observed concurrency. PostgresTestConfiguration remains a common test fixture at the root.
 

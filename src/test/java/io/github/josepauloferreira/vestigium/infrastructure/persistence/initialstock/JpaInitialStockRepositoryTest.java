@@ -102,6 +102,23 @@ class JpaInitialStockRepositoryTest {
   }
 
   @Test
+  void preservesUnexpectedIntegrityFailuresAndRollsBackTheOpening() {
+    ItemId id = item();
+    jdbc.execute(
+        "ALTER TABLE initial_stock ADD CONSTRAINT unexpected_opening_probe CHECK (quantity <> 98765.4321)");
+    try {
+      var opening =
+          new InitialStock(id, InitialStockQuantity.of(new BigDecimal("98765.4321")), start);
+
+      assertThatThrownBy(() -> stocks.insert(opening))
+          .isInstanceOf(DataIntegrityViolationException.class);
+      assertThat(stocks.findByItemId(id)).isEmpty();
+    } finally {
+      jdbc.execute("ALTER TABLE initial_stock DROP CONSTRAINT unexpected_opening_probe");
+    }
+  }
+
+  @Test
   void upgradesV3WithoutChangingExistingReceipts() {
     String schema = "opening_" + UUID.randomUUID().toString().replace("-", "");
     Flyway old =

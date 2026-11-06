@@ -19,6 +19,30 @@ import org.springframework.stereotype.Repository;
 public class StockTrackingGuard {
   private final EntityManager entityManager;
 
+  public void beforeOpening(InitialStock stock) {
+    UUID itemId = stock.itemId().value();
+    if (!lockItems(List.of(itemId))) {
+      throw new ItemNotFoundException();
+    }
+    if (entityManager.find(InitialStockEntity.class, itemId) != null) {
+      throw new DuplicateInitialStockException();
+    }
+    Instant earliestReceipt = earliestReceiptFor(itemId);
+    if (earliestReceipt != null && !stock.precedesOrEquals(earliestReceipt)) {
+      throw new StockChronologyConflictException();
+    }
+  }
+
+  public void beforeReceipt(StockEntry entry) {
+    var itemIds = entry.lines().stream().map(line -> line.itemId().value()).toList();
+    if (!lockItems(itemIds)) {
+      throw new InvalidStockEntryDataException("Every stock entry item must exist in the catalog");
+    }
+    if (hasOpeningAfter(itemIds, entry.occurredAt())) {
+      throw new StockChronologyConflictException();
+    }
+  }
+
   private boolean lockItems(List<UUID> ids) {
     // Stable database UUID order, shared by both write paths. The caller owns the transaction.
     var locked =
@@ -30,33 +54,24 @@ public class StockTrackingGuard {
     return locked.size() == ids.size();
   }
 
-  public void beforeOpening(InitialStock stock) {
-    if (!lockItems(List.of(stock.itemId().value()))) throw new ItemNotFoundException();
-    if (entityManager.find(InitialStockEntity.class, stock.itemId().value()) != null)
-      throw new DuplicateInitialStockException();
-    Instant earliest =
-        entityManager
-            .createQuery(
-                "select min(e.occurredAt) from StockEntryEntity e join e.lines line where line.itemId = :item",
-                Instant.class)
-            .setParameter("item", stock.itemId().value())
-            .getSingleResult();
-    if (earliest != null && !stock.precedesOrEquals(earliest))
-      throw new StockChronologyConflictException();
+  private Instant earliestReceiptFor(UUID itemId) {
+    return entityManager
+        .createQuery(
+            "select min(e.occurredAt) from StockEntryEntity e join e.lines line where line.itemId = :item",
+            Instant.class)
+        .setParameter("item", itemId)
+        .getSingleResult();
   }
 
-  public void beforeReceipt(StockEntry entry) {
-    var ids = entry.lines().stream().map(line -> line.itemId().value()).toList();
-    if (!lockItems(ids))
-      throw new InvalidStockEntryDataException("Every stock entry item must exist in the catalog");
+  private boolean hasOpeningAfter(List<UUID> itemIds, Instant occurredAt) {
     long conflicts =
         entityManager
             .createQuery(
                 "select count(s) from InitialStockEntity s where s.itemId in :ids and s.occurredAt > :time",
                 Long.class)
-            .setParameter("ids", ids)
-            .setParameter("time", entry.occurredAt())
+            .setParameter("ids", itemIds)
+            .setParameter("time", occurredAt)
             .getSingleResult();
-    if (conflicts > 0) throw new StockChronologyConflictException();
+    return conflicts > 0;
   }
 }

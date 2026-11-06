@@ -34,28 +34,7 @@ public class JpaStockEntryRepository implements StockEntryRepository {
       tracking.beforeReceipt(entry);
       repository.saveAndFlush(new StockEntryEntity(entry));
     } catch (DataIntegrityViolationException exception) {
-      if (isDuplicateIdentity(exception)) {
-        throw new DuplicateStockEntryIdException(entry.id(), exception);
-      }
-      for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
-        if (cause instanceof ConstraintViolationException violation
-            && "23503".equals(violation.getSQLState())
-            && "stock_entry_lines_item_id_fkey".equals(violation.getConstraintName())) {
-          throw new InvalidStockEntryDataException(
-              "Every stock entry item must exist in the catalog", exception);
-        }
-        if (cause instanceof SQLException sql && "22008".equals(sql.getSQLState())) {
-          throw new InvalidStockEntryDataException(
-              "occurredAt exceeds PostgreSQL timestamp storage limits", exception);
-        }
-        if (cause instanceof ConstraintViolationException violation
-            && "23514".equals(violation.getSQLState())
-            && "stock_entries_occurred_at_check".equals(violation.getConstraintName())) {
-          throw new InvalidStockEntryDataException(
-              "occurredAt exceeds PostgreSQL timestamp storage limits", exception);
-        }
-      }
-      throw exception;
+      throw translateWriteFailure(entry.id(), exception);
     }
   }
 
@@ -64,6 +43,41 @@ public class JpaStockEntryRepository implements StockEntryRepository {
   public Optional<StockEntry> findById(StockEntryId id) {
     Objects.requireNonNull(id, "Stock entry ID is required");
     return repository.findById(id.value()).map(StockEntryEntity::toDomain);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<StockEntry> findByItemId(ItemId itemId) {
+    Objects.requireNonNull(itemId, "Item ID is required");
+    return repository.findByItemId(itemId.value()).stream()
+        .map(StockEntryEntity::toDomain)
+        .toList();
+  }
+
+  private static RuntimeException translateWriteFailure(
+      StockEntryId id, DataIntegrityViolationException exception) {
+    if (isDuplicateIdentity(exception)) {
+      return new DuplicateStockEntryIdException(id, exception);
+    }
+    for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+      if (cause instanceof ConstraintViolationException violation
+          && "23503".equals(violation.getSQLState())
+          && "stock_entry_lines_item_id_fkey".equals(violation.getConstraintName())) {
+        return new InvalidStockEntryDataException(
+            "Every stock entry item must exist in the catalog", exception);
+      }
+      if (cause instanceof SQLException sql && "22008".equals(sql.getSQLState())) {
+        return new InvalidStockEntryDataException(
+            "occurredAt exceeds PostgreSQL timestamp storage limits", exception);
+      }
+      if (cause instanceof ConstraintViolationException violation
+          && "23514".equals(violation.getSQLState())
+          && "stock_entries_occurred_at_check".equals(violation.getConstraintName())) {
+        return new InvalidStockEntryDataException(
+            "occurredAt exceeds PostgreSQL timestamp storage limits", exception);
+      }
+    }
+    return exception;
   }
 
   private static boolean isDuplicateIdentity(Throwable exception) {
@@ -82,14 +96,5 @@ public class JpaStockEntryRepository implements StockEntryRepository {
       }
     }
     return false;
-  }
-
-  @Override
-  @Transactional(readOnly = true)
-  public List<StockEntry> findByItemId(ItemId itemId) {
-    Objects.requireNonNull(itemId, "Item ID is required");
-    return repository.findByItemId(itemId.value()).stream()
-        .map(StockEntryEntity::toDomain)
-        .toList();
   }
 }
