@@ -4,15 +4,22 @@ import io.github.josepauloferreira.vestigium.application.initialstock.InitialSto
 import io.github.josepauloferreira.vestigium.domain.initialstock.InitialStockQuantity;
 import io.github.josepauloferreira.vestigium.domain.item.ItemId;
 import io.github.josepauloferreira.vestigium.infrastructure.web.shared.CanonicalUuid;
+import io.github.josepauloferreira.vestigium.infrastructure.web.shared.OccurrenceTime;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeParseException;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.*;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -31,18 +38,13 @@ public class InitialStockController {
   public ResponseEntity<InitialStockResponse> create(
       @PathVariable String id, @Valid @RequestBody CreateInitialStockRequest request) {
     ItemId itemId = parseId(id);
-    java.time.Instant time;
-    try {
-      time = OffsetDateTime.parse(request.occurredAt()).toInstant();
-    } catch (DateTimeParseException exception) {
-      throw new ResponseStatusException(
-          HttpStatus.BAD_REQUEST,
-          "occurredAt must be an ISO 8601 date/time with Z or an explicit offset");
-    }
-    if (time.getNano() % 1_000 != 0)
+    Instant occurredAt = OccurrenceTime.parse(request.occurredAt());
+    if (occurredAt.getNano() % 1_000 != 0) {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "Initial stock occurrence must use microsecond precision");
-    var result = operations.register(itemId, new InitialStockQuantity(request.quantity()), time);
+    }
+    var result =
+        operations.register(itemId, new InitialStockQuantity(request.quantity()), occurredAt);
     return ResponseEntity.created(URI.create("/items/" + itemId.value() + "/initial-stock"))
         .body(InitialStockResponse.from(result));
   }
