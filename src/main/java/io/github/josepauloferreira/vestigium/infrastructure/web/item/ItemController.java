@@ -27,6 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ItemController {
 
   private final ItemRepository repository;
+  private final ItemWebMapper mapper;
 
   @Operation(
       operationId = "createItem",
@@ -38,7 +39,7 @@ public class ItemController {
     Item item = new Item(parseId(request.id()), request.name(), request.unit());
     repository.insert(item);
     return ResponseEntity.created(URI.create("/items/" + item.id().value()))
-        .body(ItemResponse.from(item));
+        .body(mapper.toResponse(item));
   }
 
   @Operation(operationId = "getItem", summary = "Find a catalog item")
@@ -46,7 +47,7 @@ public class ItemController {
   public ItemResponse find(@PathVariable String id) {
     return repository
         .findById(parseId(id))
-        .map(ItemResponse::from)
+        .map(mapper::toResponse)
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Item was not found"));
   }
 

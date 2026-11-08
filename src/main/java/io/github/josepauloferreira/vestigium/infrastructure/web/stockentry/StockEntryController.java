@@ -33,6 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class StockEntryController {
 
   private final StockEntryRepository repository;
+  private final StockEntryWebMapper mapper;
 
   @Operation(
       operationId = "createStockEntry",
@@ -59,7 +60,7 @@ public class StockEntryController {
     }
     repository.insert(entry);
     return ResponseEntity.created(URI.create("/stock-entries/" + entry.id().value()))
-        .body(StockEntryResponse.from(entry));
+        .body(mapper.toResponse(entry));
   }
 
   @Operation(operationId = "getStockEntry", summary = "Find a complete receipt")
@@ -67,7 +68,7 @@ public class StockEntryController {
   public StockEntryResponse find(@PathVariable String id) {
     return repository
         .findById(parseId(id))
-        .map(StockEntryResponse::from)
+        .map(mapper::toResponse)
         .orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Stock entry was not found"));
   }

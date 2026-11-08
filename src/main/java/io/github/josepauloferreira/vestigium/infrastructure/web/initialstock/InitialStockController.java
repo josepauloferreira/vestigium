@@ -28,6 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Tag(name = "Initial stock")
 public class InitialStockController {
   private final InitialStockOperations operations;
+  private final InitialStockWebMapper mapper;
 
   @Operation(
       operationId = "createInitialStock",
@@ -46,7 +47,7 @@ public class InitialStockController {
     var result =
         operations.register(itemId, new InitialStockQuantity(request.quantity()), occurredAt);
     return ResponseEntity.created(URI.create("/items/" + itemId.value() + "/initial-stock"))
-        .body(InitialStockResponse.from(result));
+        .body(mapper.toResponse(result));
   }
 
   @Operation(
@@ -56,7 +57,7 @@ public class InitialStockController {
           "A recorded zero is a fact. An existing item without an opening record returns 404 with a distinct detail; absence never fabricates a zero opening.")
   @GetMapping
   public InitialStockResponse find(@PathVariable String id) {
-    return InitialStockResponse.from(operations.find(parseId(id)));
+    return mapper.toResponse(operations.find(parseId(id)));
   }
 
   private static ItemId parseId(String value) {
