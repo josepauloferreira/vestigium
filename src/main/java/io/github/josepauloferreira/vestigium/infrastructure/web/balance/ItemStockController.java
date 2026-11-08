@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class ItemStockController {
   private final ItemStockQueries queries;
+  private final ItemStockWebMapper mapper;
 
   @Operation(
       operationId = "getItemBalance",
@@ -29,8 +30,7 @@ public class ItemStockController {
           "Exact total of optional initial stock plus all recorded receipts, including future-dated facts. No automatic time cutoff. An existing item without initial stock or receipts returns zero. Other movement types are future work.")
   @GetMapping("/balance")
   public ItemBalanceResponse balance(@PathVariable String id) {
-    var balance = queries.balance(parseId(id));
-    return new ItemBalanceResponse(balance.itemId().value(), balance.unit(), balance.quantity());
+    return mapper.toResponse(queries.balance(parseId(id)));
   }
 
   private static ItemId parseId(String value) {
@@ -44,15 +44,6 @@ public class ItemStockController {
           "All recorded receipts for this item, ordered by occurrence and database UUID order. Preserves each quantity scale. Existing items without receipts return an empty list; no pagination or date filter is applied. Initial stock is retrieved separately and also contributes to balance.")
   @GetMapping("/stock-entries")
   public ItemEntryHistoryResponse history(@PathVariable String id) {
-    var history = queries.history(parseId(id));
-    return new ItemEntryHistoryResponse(
-        history.itemId().value(),
-        history.unit(),
-        history.entries().stream()
-            .map(
-                entry ->
-                    new ItemEntryHistoryResponse.Entry(
-                        entry.entryId().value(), entry.occurredAt().toString(), entry.quantity()))
-            .toList());
+    return mapper.toResponse(queries.history(parseId(id)));
   }
 }

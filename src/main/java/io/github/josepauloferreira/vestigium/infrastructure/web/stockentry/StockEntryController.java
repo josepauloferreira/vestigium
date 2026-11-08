@@ -7,13 +7,12 @@ import io.github.josepauloferreira.vestigium.domain.stockentry.StockEntry;
 import io.github.josepauloferreira.vestigium.domain.stockentry.StockEntryId;
 import io.github.josepauloferreira.vestigium.domain.stockentry.StockEntryLine;
 import io.github.josepauloferreira.vestigium.infrastructure.web.shared.CanonicalUuid;
+import io.github.josepauloferreira.vestigium.infrastructure.web.shared.OccurrenceTime;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -34,6 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class StockEntryController {
 
   private final StockEntryRepository repository;
+  private final StockEntryWebMapper mapper;
 
   @Operation(
       operationId = "createStockEntry",
@@ -43,7 +43,7 @@ public class StockEntryController {
   @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<StockEntryResponse> create(
       @Valid @RequestBody CreateStockEntryRequest request) {
-    Instant occurredAt = parseOccurrence(request.occurredAt());
+    Instant occurredAt = OccurrenceTime.parse(request.occurredAt());
     var lines =
         request.lines().stream()
             .map(
@@ -60,7 +60,7 @@ public class StockEntryController {
     }
     repository.insert(entry);
     return ResponseEntity.created(URI.create("/stock-entries/" + entry.id().value()))
-        .body(StockEntryResponse.from(entry));
+        .body(mapper.toResponse(entry));
   }
 
   @Operation(operationId = "getStockEntry", summary = "Find a complete receipt")
@@ -68,19 +68,9 @@ public class StockEntryController {
   public StockEntryResponse find(@PathVariable String id) {
     return repository
         .findById(parseId(id))
-        .map(StockEntryResponse::from)
+        .map(mapper::toResponse)
         .orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Stock entry was not found"));
-  }
-
-  private static Instant parseOccurrence(String value) {
-    try {
-      return OffsetDateTime.parse(value).toInstant();
-    } catch (DateTimeParseException exception) {
-      throw new ResponseStatusException(
-          HttpStatus.BAD_REQUEST,
-          "occurredAt must be an ISO 8601 date/time with Z or an explicit offset");
-    }
   }
 
   private static StockEntryId parseId(String value) {
